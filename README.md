@@ -194,6 +194,16 @@ assets/             截图与封面
 - [ ] 术语表自动生成与去重
 - [ ] 打包体积优化
 
+## 关于
+
+一个人做的课堂工具，自己也在用。
+
+- **GitHub**：[@yuluo-zero](https://github.com/yuluo-zero)
+- **B 站**：💬 待填（BILIBILI_ID）
+- **问题反馈**：[Issues](https://github.com/yuluo-zero/captinote/issues)
+
+如果它帮到你了，给个 Star 就行。
+
 ## 许可
 
 [MIT](LICENSE) · 随便改、随便用、随便发。
