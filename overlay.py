@@ -349,7 +349,7 @@ class VadSegmenter:
     FRAME = 512
     WINDOW = 8192
 
-    def __init__(self, silence_ms=1200, max_ms=14000, pre_roll_ms=300):
+    def __init__(self, silence_ms=700, max_ms=10000, pre_roll_ms=300):
         from faster_whisper.vad import get_vad_model
 
         self.model = get_vad_model()
@@ -407,8 +407,8 @@ class VadSegmenter:
         self.silence = 0 if prob > 0.30 else self.silence + SR // 5
 
         if self.silence >= self.silence_n or self.seg_len >= self.max_n:
-            # Whisper 需要上下文：实测 4 秒全是幻觉、8 秒零碎、10 秒以上才稳
-            if self.seg_len >= SR * 10:
+            # 短段快出字；上下文由滑动窗口补足，见 submit(ctx=...)
+            if self.seg_len >= SR * 5:
                 return self._emit()
             self.silence = 0
         return None
@@ -588,30 +588,42 @@ class Recognizer:
             cpu_threads=self.threads,
         )
 
-    def submit(self, audio: np.ndarray):
+    def submit(self, audio: np.ndarray, ctx: np.ndarray | None = None):
         if self.jobs.qsize() < 4:
-            self.jobs.put(audio)
+            self.jobs.put((audio, ctx))
 
     def _work(self):
         while True:
-            audio = self.jobs.get()
+            audio, ctx = self.jobs.get()
             while self.model is None:
                 time.sleep(0.2)
+            ctx_n = 0 if ctx is None else len(ctx)
+            feed = audio if not ctx_n else np.concatenate([ctx, audio])
             try:
                 segs, _ = self.model.transcribe(
-                    audio,
+                    feed,
                     language="en",
                     beam_size=1,
                     vad_filter=True,
                     condition_on_previous_text=False,
                     initial_prompt=self.prompt or None,
+                    word_timestamps=bool(ctx_n),
                 )
                 # 低置信度的段直接丢：Whisper 在没人说话时会编台词
                 kept = [
                     s for s in segs
                     if s.no_speech_prob < 0.8 and s.avg_logprob > -1.5
                 ]
-                text = " ".join(s.text.strip() for s in kept).strip()
+                if ctx_n:
+                    # 只要上下文之后的新词，前面已经显示过的不重复
+                    cut = ctx_n / SR - 0.15
+                    words = [w.word for s in kept for w in (s.words or [])
+                             if w.start >= cut]
+                    text = " ".join(" ".join(words).split())
+                    if not text:  # 没有词级时间戳就退回整段
+                        text = " ".join(s.text.strip() for s in kept).strip()
+                else:
+                    text = " ".join(s.text.strip() for s in kept).strip()
                 text = _dedupe(text)
                 if text.strip().lower() in _HALLUCINATIONS:
                     text = ""
@@ -2412,6 +2424,7 @@ def main() -> int:
         stream_holder["s"] = s
         state["recording"] = True
         state["paused"] = False
+        state["ctx"] = None
         win.set_running(True)
         win.set_status("正在录音", "#f87171")
 
@@ -2636,7 +2649,9 @@ def main() -> int:
             session.write_audio(audio)
         piece = seg_holder["seg"].feed(audio)
         if piece is not None and len(piece) > SR // 5:
-            rec.submit(piece)
+            rec.submit(piece, state.get("ctx"))
+            # 记下这一段尾巴，下次当上下文用（滑动窗口）
+            state["ctx"] = piece[-SR * 8:].copy()
         ds = state.get("draft")
         if ds is not None:
             try:
