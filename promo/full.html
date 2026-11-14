@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<title>CaptiNote 宣传片</title>
+<style>
+  html, body { margin: 0; background: #070a10; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+</style>
+<canvas id="scene"></canvas>
+<script>
+const canvas = document.querySelector('canvas');
+const ctx = canvas.getContext('2d');
+const DUR = 50;
+const W = { bg0: '#111c31', bg1: '#06090f', white: '#f4f7fc', dim: '#8ea0bd',
+            blue: '#3b6bf0', green: '#3be08a', ink: '#161a22', gray: '#5f6878' };
+
+const cl = (x) => Math.max(0, Math.min(1, x));
+const ease = (x) => { x = cl(x); return x * x * (3 - 2 * x); };
+const out = (x) => { x = cl(x); return 1 - Math.pow(1 - x, 3); };
+
+function bg() {
+  const g = ctx.createLinearGradient(0, 0, 0, 720);
+  g.addColorStop(0, W.bg0); g.addColorStop(1, W.bg1);
+  ctx.fillStyle = g; ctx.fillRect(-640, -360, 1280, 720);
+  const r = ctx.createRadialGradient(-380, -260, 0, -380, -260, 900);
+  r.addColorStop(0, 'rgba(59,107,240,0.18)'); r.addColorStop(1, 'rgba(59,107,240,0)');
+  ctx.fillStyle = r; ctx.fillRect(-640, -360, 1280, 720);
+}
+
+function txt(str, x, y, size, color, weight = 'bold', alpha = 1, ls = 0, align = 'center') {
+  ctx.save(); ctx.globalAlpha = alpha; ctx.fillStyle = color;
+  ctx.font = `${weight} ${size}px "Microsoft YaHei","PingFang SC",sans-serif`;
+  ctx.textAlign = align; ctx.textBaseline = 'middle';
+  if (ls) {
+    const cs = [...str]; let tot = 0;
+    cs.forEach(c => tot += ctx.measureText(c).width + ls); tot -= ls;
+    let cx = align === 'center' ? x - tot / 2 : x;
+    cs.forEach(c => { const w = ctx.measureText(c).width; ctx.fillText(c, cx + w / 2, y); cx += w + ls; });
+  } else ctx.fillText(str, x, y);
+  ctx.restore();
+}
+
+function rr(x, y, w, h, r, fill, shadow = 0) {
+  ctx.save();
+  if (shadow) { ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = shadow; ctx.shadowOffsetY = shadow / 3; }
+  ctx.fillStyle = fill; ctx.beginPath();
+  ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); ctx.fill(); ctx.restore();
+}
+
+/* 字幕条：草稿灰 + 定稿黑 */
+function subBar(cx, cy, w, h, a, en, zh, draft) {
+  if (a <= 0.01) return;
+  ctx.save(); ctx.globalAlpha = a;
+  rr(cx - w / 2, cy - h / 2, w, h, 26, 'rgba(255,255,255,0.98)', 34);
+  ctx.fillStyle = W.green; ctx.beginPath(); ctx.arc(cx - w / 2 + 30, cy - h / 2 + 26, 5, 0, 7); ctx.fill();
+  ctx.fillStyle = W.gray; ctx.globalAlpha = a * 0.9;
+  ctx.font = '400 17px "Microsoft YaHei",sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  ctx.fillText(en, cx - w / 2 + 48, cy - 14);
+  ctx.globalAlpha = a;
+  ctx.fillStyle = draft ? '#9aa3b2' : W.ink;
+  ctx.font = `${draft ? '400' : 'bold'} 30px "Microsoft YaHei",sans-serif`;
+  ctx.fillText(zh, cx - w / 2 + 48, cy + 26);
+  ctx.restore();
+}
+
+/* 场景 1：痛点 */
+function scene1(u) {
+  const a = out(u / 0.6);
+  txt('一节两小时的英文课', 0, -150, 30, W.dim, 'normal', a);
+  txt('2:03:47', 0, -62, 78, W.white, 'bold', a);
+  txt('哪里该重听？', 0, 36, 40, W.dim, 'normal', out((u - 1.2) / 0.7));
+  txt('录下来回去听 —— 两小时，找不到重点', 0, 128, 24, '#6e7f9c', 'normal', out((u - 2.0) / 0.7));
+}
+
+/* 场景 2：它是什么 */
+function scene2(u) {
+  txt('所以做了一个工具', 0, -190, 34, W.dim, 'normal', out(u / 0.6));
+  txt('把听不懂的英文课', 0, -92, 62, W.white, 'bold', out((u - 0.4) / 0.7));
+  txt('变成看得懂的中文', 0, -18, 62, W.blue, 'bold', out((u - 1.0) / 0.7));
+  const items = ['实时字幕浮窗', '课后自动纪要', '全部本地运行'];
+  const cols = [W.white, W.white, W.green];
+  items.forEach((s, i) => {
+    const p = out((u - 1.9 - i * 0.28) / 0.6);
+    if (p <= 0.01) return;
+    ctx.save(); ctx.globalAlpha = p;
+    rr(-330 + i * 220, 90, 200, 56, 28, 'rgba(255,255,255,0.07)');
+    ctx.restore();
+    txt(s, -230 + i * 220, 118, 21, cols[i], 'normal', p);
+  });
+}
+
+/* 场景 3：字幕演示 */
+function scene3(u) {
+  txt('屏幕最上层，跟着老师的话滚', 0, -290, 26, W.dim, 'normal', out(u / 0.6));
+  // 假 PPT
+  const pa = out((u - 0.2) / 0.7);
+  ctx.save(); ctx.globalAlpha = pa * 0.5;
+  rr(-470, -240, 940, 300, 10, 'rgba(255,255,255,0.10)');
+  for (let i = 0; i < 4; i++) rr(-410, -190 + i * 52, 700 - i * 70, 14, 7, 'rgba(255,255,255,0.18)');
+  ctx.restore();
+
+  const s1 = out((u - 1.0) / 0.5), s2 = out((u - 3.6) / 0.5), s3 = out((u - 6.4) / 0.5);
+  if (s3 > 0.01)
+    subBar(0, 210, 900, 128, s3, 'The interference fit means the shaft is larger than the hole.', '过盈配合意味着轴比孔略大。', false);
+  else if (s2 > 0.01)
+    subBar(0, 210, 900, 128, s2, 'Once you download the worksheet, it looks like this.', '下载工作表之后，它看起来就是这样。', false);
+  else if (s1 > 0.01 && u >= 2.6)
+    subBar(0, 210, 900, 128, 1, 'So today we are going to look at week six, lab two.', '所以今天我们要看第六周实验二。', false);
+  else if (s1 > 0.01)
+    subBar(0, 210, 900, 128, s1, 'So today we are going to look at week six', '⋯ 所以今天我们要看第六…', true);
+  const hint = out((u - 7.2) / 0.6);
+  txt('灰色是草稿（1-2 秒）　黑色是定稿（约 10 秒）', 0, 316, 22, W.dim, 'normal', hint);
+}
+
+/* 场景 4：纪要 */
+function scene4(u) {
+  txt('下课，自动生成纪要', 0, -300, 30, W.dim, 'normal', out(u / 0.6));
+  const a = out((u - 0.4) / 0.7);
+  ctx.save(); ctx.globalAlpha = a;
+  rr(-420, -250, 840, 512, 14, 'rgba(255,255,255,0.97)', 30);
+  txt('第六周实验二 · 公差与配合', -390, -206, 24, W.ink, 'bold', a, 0, 'left');
+  rr(-390, -176, 780, 1, 0, 'rgba(0,0,0,0.10)');
+  txt('> 讲了间隙配合和过盈配合的区别，并布置了展示任务。', -390, -148, 17, W.gray, 'normal', a, 0, 'left');
+
+  txt('时间轴', -390, -100, 18, W.ink, 'bold', a, 0, 'left');
+  const rows = [['00:12 – 03:40', '课程介绍'], ['03:40 – 12:05', '配合概念'], ['12:05 – 25:30', '展示安排']];
+  rows.forEach((r, i) => {
+    const p = out((u - 0.9 - i * 0.25) / 0.5);
+    txt(r[0], -390, -66 + i * 34, 16, W.blue, 'bold', a * p, 0, 'left');
+    txt(r[1], -230, -66 + i * 34, 16, W.gray, 'normal', a * p, 0, 'left');
+  });
+
+  txt('本节课术语', -390, 62, 18, W.ink, 'bold', a, 0, 'left');
+  const terms = [['clearance fit', '间隙配合'], ['interference fit', '过盈配合'], ['tolerance', '公差']];
+  terms.forEach((r, i) => {
+    const p = out((u - 1.8 - i * 0.25) / 0.5);
+    txt('·', -390, 96 + i * 30, 16, W.gray, 'bold', a * p, 0, 'left');
+    txt(r[0] + '  —  ' + r[1], -368, 96 + i * 30, 16, W.gray, 'normal', a * p, 0, 'left');
+  });
+  ctx.restore();
+
+  txt('点时间轴，直接跳回那段录音', 0, 292, 22, W.dim, 'normal', out((u - 3.4) / 0.6));
+}
+
+/* 场景 5：回放 */
+function scene5(u) {
+  txt('走神十分钟？点一下补回来', 0, -230, 30, W.white, 'bold', out(u / 0.6));
+  const a = out((u - 0.3) / 0.6);
+  ctx.save(); ctx.globalAlpha = a;
+  rr(-420, -120, 840, 90, 12, 'rgba(255,255,255,0.10)');
+  txt('03:40 – 12:05', -380, -75, 20, W.blue, 'bold', a, 0, 'left');
+  txt('配合概念', -200, -75, 20, W.white, 'normal', a, 0, 'left');
+  ctx.restore();
+  // 播放进度条
+  if (u > 1.0) {
+    const p = out((u - 1.0) / 1.6);
+    rr(-380, 10, 760, 6, 3, 'rgba(255,255,255,0.16)');
+    rr(-380, 10, 760 * p, 6, 3, W.green);
+    ctx.fillStyle = W.white; ctx.beginPath(); ctx.arc(-380 + 760 * p, 13, 7, 0, 7); ctx.fill();
+    const sec = 220 + Math.floor(p * 41);
+    const mm = String(Math.floor(sec / 60)).padStart(2, '0');
+    const ss = String(sec % 60).padStart(2, '0');
+    txt('▶ 正在播放 ' + mm + ':' + ss, 0, 52, 18, W.dim, 'normal', p);
+  }
+}
+
+/* 场景 6：信任 */
+function scene6(u) {
+  txt('凭什么放心用', 0, -230, 30, W.dim, 'normal', out(u / 0.6));
+  const rows = [
+    ['录音不上传', '音频、转写、纪要全部存在你自己的电脑里'],
+    ['只把文字发出去', '翻译才联网，也可以切成完全离线'],
+    ['开源免费', 'MIT 协议，随便改随便用'],
+  ];
+  rows.forEach((r, i) => {
+    const p = out((u - 0.5 - i * 0.55) / 0.6);
+    if (p <= 0.01) return;
+    ctx.save(); ctx.globalAlpha = p;
+    ctx.fillStyle = W.green; ctx.beginPath(); ctx.arc(-360, -110 + i * 92, 7, 0, 7); ctx.fill();
+    ctx.restore();
+    txt(r[0], -330, -118 + i * 92, 30, W.white, 'bold', p, 0, 'left');
+    txt(r[1], -330, -80 + i * 92, 19, W.dim, 'normal', p, 0, 'left');
+  });
+}
+
+/* 场景 7：结尾 */
+function scene7(u) {
+  const a = out(u / 0.7);
+  txt('课 记', 0, -120, 62, W.white, 'bold', a, 6);
+  txt('C A P T I N O T E', 0, -52, 19, W.dim, 'normal', out((u - 0.3) / 0.6), 2);
+  txt('开源 · 免费 · 录音不上传', 0, 14, 22, '#c6d2e4', 'normal', out((u - 0.5) / 0.6));
+  txt('GitHub：yuluo-zero/captinote', 0, 86, 20, W.white, 'bold', out((u - 0.8) / 0.6));
+  txt('B 站：雨落降零度', 0, 126, 19, W.dim, 'normal', out((u - 1.0) / 0.6));
+}
+
+const SCENES = [[0, 5.0, scene1], [5.0, 10.5, scene2], [10.5, 24.0, scene3],
+                [24.0, 33.0, scene4], [33.0, 38.5, scene5], [38.5, 44.5, scene6],
+                [44.5, 50.0, scene7]];
+
+function draw(t) {
+  const w = canvas.width = innerWidth, h = canvas.height = innerHeight;
+  const s = Math.min(w / 1280, h / 720);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  ctx.save(); ctx.translate(w / 2, h / 2); ctx.scale(s, s);
+  ctx.save(); ctx.translate(0, 0);
+  bg();
+  for (const [a, b, fn] of SCENES) if (t >= a && t < b) fn(t - a);
+  ctx.restore();
+  // 进度条
+  ctx.fillStyle = 'rgba(255,255,255,0.10)'; ctx.fillRect(-640, 352, 1280, 3);
+  ctx.fillStyle = W.blue; ctx.fillRect(-640, 352, 1280 * (t / DUR), 3);
+  ctx.restore();
+}
+
+window.renderAt = (t) => { draw(t); return true; };
+const q = new URLSearchParams(location.search);
+if (!q.get('export')) {
+  const loop = () => { draw((performance.now() / 1000) % DUR); requestAnimationFrame(loop); };
+  loop();
+}
+</script>
+</html>

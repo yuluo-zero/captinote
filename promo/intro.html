@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<title>CaptiNote 片头</title>
+<style>
+  html, body { margin: 0; background: #080d18; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+</style>
+<canvas id="scene"></canvas>
+<script>
+const canvas = document.querySelector('canvas');
+const ctx = canvas.getContext('2d');
+
+const C = {
+  bg0: '#101a2e', bg1: '#070a10',
+  white: '#f4f7fc', dim: '#8ea0bd',
+  blue: '#3b6bf0', green: '#3be08a'
+};
+
+function ease(x) { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); }
+function out(x) { x = Math.max(0, Math.min(1, x)); return 1 - Math.pow(1 - x, 3); }
+
+function bg(w, h) {
+  const g = ctx.createLinearGradient(0, 0, w, h);
+  g.addColorStop(0, C.bg0); g.addColorStop(1, C.bg1);
+  ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+  const r = ctx.createRadialGradient(w * 0.25, h * 0.1, 0, w * 0.25, h * 0.1, w * 0.8);
+  r.addColorStop(0, 'rgba(59,107,240,0.16)'); r.addColorStop(1, 'rgba(59,107,240,0)');
+  ctx.fillStyle = r; ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = 'rgba(255,255,255,0.045)';
+  for (let y = 0; y < h; y += 44) for (let x = 0; x < w; x += 44) {
+    ctx.fillRect(x, y, 1.2, 1.2);
+  }
+}
+
+function text(str, x, y, size, color, weight = 'bold', alpha = 1, ls = 0) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = color;
+  ctx.font = `${weight} ${size}px "Microsoft YaHei","PingFang SC",sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  if (ls) { // 字距
+    const chars = [...str];
+    let total = 0;
+    chars.forEach(c => total += ctx.measureText(c).width + ls);
+    total -= ls;
+    let cx = x - total / 2;
+    chars.forEach(c => {
+      const w = ctx.measureText(c).width;
+      ctx.fillText(c, cx + w / 2, y);
+      cx += w + ls;
+    });
+  } else {
+    ctx.fillText(str, x, y);
+  }
+  ctx.restore();
+}
+
+function captionBar(cx, cy, w, h, alpha, en, zh, prog) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  // 阴影
+  ctx.shadowColor = 'rgba(0,0,0,0.45)'; ctx.shadowBlur = 40; ctx.shadowOffsetY = 14;
+  ctx.fillStyle = 'rgba(255,255,255,0.97)';
+  const r = h / 2;
+  ctx.beginPath();
+  ctx.moveTo(cx - w / 2 + r, cy - h / 2);
+  ctx.arcTo(cx + w / 2, cy - h / 2, cx + w / 2, cy + h / 2, r);
+  ctx.arcTo(cx + w / 2, cy + h / 2, cx - w / 2, cy + h / 2, r);
+  ctx.arcTo(cx - w / 2, cy + h / 2, cx - w / 2, cy - h / 2, r);
+  ctx.arcTo(cx - w / 2, cy - h / 2, cx + w / 2, cy - h / 2, r);
+  ctx.closePath(); ctx.fill();
+  ctx.shadowColor = 'transparent';
+
+  // 状态点
+  ctx.fillStyle = C.green;
+  ctx.beginPath(); ctx.arc(cx - w / 2 + 38, cy - h / 2 + 30, 6, 0, Math.PI * 2); ctx.fill();
+
+  // 英文行
+  ctx.globalAlpha = alpha * 0.85;
+  ctx.fillStyle = '#5f6878';
+  ctx.font = '400 19px "Microsoft YaHei",sans-serif';
+  ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  ctx.fillText(en, cx - w / 2 + 58, cy - 8);
+
+  // 中文行（按进度揭示）
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = '#161a22';
+  ctx.font = 'bold 32px "Microsoft YaHei",sans-serif';
+  const shown = zh.slice(0, Math.ceil(zh.length * prog));
+  ctx.fillText(shown, cx - w / 2 + 58, cy + 30);
+  ctx.restore();
+}
+
+function draw(t) {
+  const w = canvas.width = innerWidth, h = canvas.height = innerHeight;
+  const s = Math.min(w / 1280, h / 720);
+  bg(w, h);
+  ctx.save();
+  ctx.translate(w / 2, h / 2);
+  ctx.scale(s, s);
+
+  // 1) 0-2.8 标题
+  if (t < 3.0) {
+    const a = out(t / 0.7), a2 = out((t - 1.1) / 0.7);
+    text('英文课听不懂？', 0, -26 - (1 - a) * 14, 72, C.white, 'bold', a);
+    if (t > 1.0) text('我做了个工具', 0, 62, 34, C.blue, 'bold', a2);
+  }
+  // 2) 3.0-5.6 价值主张
+  else if (t < 5.8) {
+    const u = t - 3.0, a = out(u / 0.7), a2 = out((u - 0.9) / 0.7);
+    text('让它自己变成中文', 0, -16, 68, C.white, 'bold', a);
+    // 下划线扫过
+    const sw = 470 * out(u / 1.0);
+    ctx.globalAlpha = a2;
+    ctx.fillStyle = C.blue;
+    ctx.fillRect(-sw / 2, 44, sw, 5);
+    ctx.globalAlpha = 1;
+    if (u > 1.5) text('实时字幕浮窗　课后自动纪要', 0, 104, 26, C.dim, 'normal', out((u - 1.5) / 0.6));
+  }
+  // 3) 5.8-8.4 字幕窗演示
+  else if (t < 8.6) {
+    const u = t - 5.8;
+    text('老师说什么，几秒内变成中文', 0, -232, 30, C.dim, 'normal', out(u / 0.6));
+    const p1 = out((u - 0.5) / 0.5);
+    captionBar(0, 10, 880, 128, p1, 'So today we are going to look at week six, lab two.',
+               '所以今天我们要看第六周实验二。', out((u - 1.0) / 1.1));
+    const p2 = out((u - 1.9) / 0.5);
+    if (u > 1.9) captionBar(0, 158, 880, 128, p2 * 0.85, 'Once you download the worksheet, it looks like this.',
+               '下载工作表之后，它看起来就是这样。', out((u - 2.3) / 1.0));
+  }
+  // 4) 8.6-10 收尾
+  else {
+    const u = t - 8.6, a = out(u / 0.6);
+    text('课 记', 0, -20, 66, C.white, 'bold', a, 6);
+    text('C A P T I N O T E', 0, 52, 20, C.dim, 'normal', out((u - 0.35) / 0.6), 2);
+    text('github.com/yuluo-zero/captinote', 0, 122, 22, C.blue, 'normal', out((u - 0.7) / 0.6));
+  }
+
+  ctx.restore();
+}
+
+window.renderAt = t => { draw(t); return true; };
+const q = new URLSearchParams(location.search);
+if (!q.get('export')) {
+  const loop = () => { draw((performance.now() / 1000) % 10); requestAnimationFrame(loop); };
+  loop();
+}
+</script>
+</html>

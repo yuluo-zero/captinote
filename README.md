@@ -6,6 +6,7 @@
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-lightgrey.svg)]()
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)]()
 [![Offline](https://img.shields.io/badge/%E5%BD%95%E9%9F%B3-%E4%B8%8D%E4%B8%8A%E4%BC%A0-green.svg)]()
+[![Bilibili](https://img.shields.io/badge/B%E7%AB%99-%E8%A7%82%E7%9C%8B%E6%BC%94%E7%A4%BA-00A1D6?logo=bilibili&logoColor=white)](https://www.bilibili.com/video/BV1pEWC6pEVn)
 
 <p align="center">
   <img src="assets/live-demo3.gif" width="760" alt="实时字幕演示">
@@ -198,8 +199,9 @@ assets/             截图与封面
 
 一个人做的课堂工具，自己也在用。
 
+- **视频演示**：[B 站 · 英文课听不懂？我做了个能听懂的工具](https://www.bilibili.com/video/BV1pEWC6pEVn)
 - **GitHub**：[@yuluo-zero](https://github.com/yuluo-zero)
-- **B 站**：💬 待填（BILIBILI_ID）
+- **B 站**：[@雨落降零度](https://search.bilibili.com/upuser?keyword=%E9%9B%A8%E8%90%BD%E9%99%8D%E9%9B%B6%E5%BA%A6)
 - **问题反馈**：[Issues](https://github.com/yuluo-zero/captinote/issues)
 
 如果它帮到你了，给个 Star 就行。
