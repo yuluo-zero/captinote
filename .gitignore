@@ -1,0 +1,24 @@
+# 本地数据，绝不提交
+config.json
+ui.json
+glossary.json
+recordings/
+models/
+venv/
+cache/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+build/
+dist/
+*.egg-info/
+
+# 编辑器
+.vscode/
+.idea/
+
+# 系统
+Thumbs.db
+desktop.ini
