@@ -87,6 +87,17 @@ if getattr(sys, "frozen", False):
     ROOT = os.path.dirname(os.path.abspath(sys.executable))
 else:
     ROOT = os.path.dirname(os.path.abspath(__file__))
+
+# 让 Windows 把这个进程当成独立应用，任务栏才认窗口图标而不是 pythonw.exe 的
+if sys.platform == "win32":
+    try:
+        import ctypes
+
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+            "CaptiNote.Desktop.1"
+        )
+    except Exception:
+        pass
 MODEL_DIR = os.path.join(ROOT, "models")
 UI_STATE = os.path.join(ROOT, "ui.json")
 SR = 16000
@@ -502,7 +513,23 @@ _FILLER_MAP = {
 }
 
 
-def _sentence_case(s: str) -> str:
+LOG_DIR = os.path.join(ROOT, "logs")
+
+
+def _log(msg: str) -> None:
+    """写一行运行日志，出问题时靠它定位。"""
+    try:
+        os.makedirs(LOG_DIR, exist_ok=True)
+        path = os.path.join(LOG_DIR, "latest.log")
+        if os.path.exists(path) and os.path.getsize(path) > 2 * 1024 * 1024:
+            os.replace(path, os.path.join(LOG_DIR, "prev.log"))
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(f"{datetime.datetime.now():%Y-%m-%d %H:%M:%S}  {msg}\n")
+    except Exception:
+        pass
+
+
+
     # 双语模型把 uh/ah/um 写成了汉字，这里映射回英文而不是删掉，
     # 老师真说的中文词保留原样（那是信息，不该丢）
     for k, v in _FILLER_MAP.items():
@@ -572,10 +599,11 @@ class DraftStreamer:
 
 
 class Recognizer:
-    def __init__(self, model_name: str, threads: int, prompt: str):
+    def __init__(self, model_name: str, threads: int, prompt: str, language: str = "en"):
         self.model_name = model_name
         self.threads = threads
         self.prompt = prompt
+        self.language = language or "en"
         self.model: WhisperModel | None = None
         self.jobs: queue.Queue = queue.Queue()
         self.on_text = None
@@ -613,7 +641,7 @@ class Recognizer:
             try:
                 segs, _ = self.model.transcribe(
                     feed,
-                    language="en",
+                    language=self.language,
                     beam_size=1,
                     vad_filter=True,
                     condition_on_previous_text=False,
@@ -643,9 +671,11 @@ class Recognizer:
 
                 traceback.print_exc()
                 print(f"[ASR] 识别失败: {exc.__class__.__name__}: {exc}", flush=True)
+                _log(f"ASR 失败 {exc.__class__.__name__}: {exc}")
                 text = ""
             if text and self.on_text:
                 self.on_text(text)
+                _log(f"ASR ok {len(audio)/SR:.1f}s → {len(text)} 字")
 
 
 class TranslatorWorker:
@@ -1600,6 +1630,7 @@ class SettingsDialog(QDialog):
     def __init__(self, parent, cfg: dict):
         super().__init__(parent)
         self.setWindowTitle("课堂同传 · 设置")
+        self.setWindowFlag(Qt.Tool, True)
         self.setMinimumSize(520, 300)
         self.resize(560, 380)
         self._cfg = dict(cfg)
@@ -1636,10 +1667,34 @@ class SettingsDialog(QDialog):
         self.ed_key.textChanged.connect(_key_changed)
 
         self.cb_model = QComboBox()
-        self.cb_model.addItems(self.MODELS)
-        if self._cfg.get("model") in self.MODELS:
-            self.cb_model.setCurrentText(self._cfg["model"])
+        for _label, _val in [
+            ("轻量 small · 约 460 MB · 快，准确率一般", "small"),
+            ("标准 large-v3-turbo · 约 780 MB · 推荐", "large-v3-turbo"),
+            ("多语言 large-v3 · 约 3 GB · 支持日韩等", "large-v3"),
+        ]:
+            self.cb_model.addItem(_label, _val)
+        _cur = self._cfg.get("model", "large-v3-turbo")
+        for _i in range(self.cb_model.count()):
+            if self.cb_model.itemData(_i) == _cur:
+                self.cb_model.setCurrentIndex(_i)
         f1.addRow("识别模型", self.cb_model)
+
+        self.cb_lang = QComboBox()
+        for _label, _val in [
+            ("英语（推荐，最快最准）", "en"),
+            ("自动检测", None),
+            ("日语", "ja"),
+            ("韩语", "ko"),
+            ("西班牙语", "es"),
+            ("法语", "fr"),
+            ("德语", "de"),
+        ]:
+            self.cb_lang.addItem(_label, _val)
+        _cl = self._cfg.get("language", "en")
+        for _i in range(self.cb_lang.count()):
+            if self.cb_lang.itemData(_i) == _cl:
+                self.cb_lang.setCurrentIndex(_i)
+        f1.addRow("识别语言", self.cb_lang)
 
         self.cb_mic = QComboBox()
         for idx, name in _input_devices():
@@ -1766,7 +1821,8 @@ class SettingsDialog(QDialog):
         cfg = dict(self._cfg)
         cfg["translator"] = self.TR_VALUES[self.cb_tr.currentIndex()]
         cfg["api_key"] = self.ed_key.text().strip()
-        cfg["model"] = self.cb_model.currentText()
+        cfg["model"] = self.cb_model.currentData() or "large-v3-turbo"
+        cfg["language"] = self.cb_lang.currentData() or "en"
         cfg["device"] = self.cb_mic.currentData()
         cfg["theme"] = "light" if self.cb_theme.currentIndex() == 1 else "dark"
         cfg["glossary"] = self.ed_gloss.toPlainText().strip()
@@ -1933,6 +1989,7 @@ class SummaryDialog(QDialog):
         self._busy = False
         self._answers: queue.Queue = queue.Queue()
         self.setWindowTitle("本次总结")
+        self.setWindowFlag(Qt.Tool, True)   # 不占任务栏，避免出现 pythonw 图标
         self.setMinimumSize(620, 620)
         self.setWindowIcon(QIcon(os.path.join(ROOT, "app.png")))
 
@@ -2273,7 +2330,9 @@ def main() -> int:
         return app.exec()
 
     bridge = Bridge()
-    rec = Recognizer(_resolve_model(args.model), args.threads, args.prompt)
+    _cfg1 = _load_config()
+    rec = Recognizer(_resolve_model(args.model), args.threads, args.prompt,
+                     language=_cfg1.get("language", "en"))
     if args.translator == "local":
         factory = lambda: LocalMarian()
     elif args.translator == "mymemory":
