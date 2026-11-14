@@ -1,0 +1,11 @@
+faster-whisper>=1.1
+av<19
+numpy
+sounddevice
+PySide6-Essentials
+sherpa-onnx>=2.0
+sherpa-onnx-core>=2.0
+python-docx
+transformers
+sentencepiece
+huggingface_hub
