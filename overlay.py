@@ -583,13 +583,21 @@ class Recognizer:
         threading.Thread(target=self._work, daemon=True).start()
 
     def _load(self):
-        self.model = WhisperModel(
-            self.model_name,
-            device="cpu",
-            compute_type="int8",
-            download_root=MODEL_DIR,
-            cpu_threads=self.threads,
-        )
+        try:
+            self.model = WhisperModel(
+                self.model_name,
+                device="cpu",
+                compute_type="int8",
+                download_root=MODEL_DIR,
+                cpu_threads=self.threads,
+            )
+            self.load_error = None
+        except Exception as exc:
+            import traceback
+
+            self.load_error = f"{exc.__class__.__name__}: {exc}"
+            traceback.print_exc()
+            print(f"[ASR] 模型加载失败: {self.load_error}", flush=True)
 
     def submit(self, audio: np.ndarray, ctx: np.ndarray | None = None):
         if self.jobs.qsize() < 4:
@@ -630,7 +638,11 @@ class Recognizer:
                 text = _dedupe(text)
                 if text.strip().lower() in _HALLUCINATIONS:
                     text = ""
-            except Exception:
+            except Exception as exc:
+                import traceback
+
+                traceback.print_exc()
+                print(f"[ASR] 识别失败: {exc.__class__.__name__}: {exc}", flush=True)
                 text = ""
             if text and self.on_text:
                 self.on_text(text)
@@ -2213,6 +2225,12 @@ def main() -> int:
     win = Overlay()
     win.show()
     _cfg0 = _load_config()
+    _mdir = os.path.join(ROOT, "models")
+    _has_model = os.path.isdir(_mdir) and any(
+        os.scandir(_mdir) for _ in [0]
+    )
+    if not _has_model:
+        win.set_status("首次启动：正在下载识别模型约 1.6 GB，请耐心等待…", "#fbbf24")
     win.size_locked = bool(_cfg0.get("lock_size"))
     win.font_scale = float(_cfg0.get("font_scale", 1.0))
     win.max_lines = int(_cfg0.get("max_lines", 3))
