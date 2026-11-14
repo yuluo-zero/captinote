@@ -83,7 +83,10 @@ QPushButton:hover { background: #2A313D; }
 QPushButton:default { background: #2563EB; border-color: #2563EB; color: white; }
 """
 
-ROOT = os.path.dirname(os.path.abspath(__file__))
+if getattr(sys, "frozen", False):
+    ROOT = os.path.dirname(os.path.abspath(sys.executable))
+else:
+    ROOT = os.path.dirname(os.path.abspath(__file__))
 MODEL_DIR = os.path.join(ROOT, "models")
 UI_STATE = os.path.join(ROOT, "ui.json")
 SR = 16000
