@@ -9,3 +9,4 @@ python-docx
 transformers
 sentencepiece
 huggingface_hub
+soundcard

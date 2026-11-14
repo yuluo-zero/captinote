@@ -1706,6 +1706,15 @@ class SettingsDialog(QDialog):
                 break
         f1.addRow("麦克风", self.cb_mic)
 
+        self.cb_src = QComboBox()
+        self.cb_src.addItem("麦克风（上课）", "mic")
+        self.cb_src.addItem("系统声音（网课/视频）", "system")
+        _as = self._cfg.get("audio_source", "mic")
+        for _i in range(self.cb_src.count()):
+            if self.cb_src.itemData(_i) == _as:
+                self.cb_src.setCurrentIndex(_i)
+        f1.addRow("音频来源", self.cb_src)
+
         tip1 = QLabel("换模型或麦克风后要重启程序才生效；翻译方式和 key 保存即生效。")
         tip1.setWordWrap(True)
         tip1.setStyleSheet("color:#7b8798; font-size:12px;")
@@ -1824,6 +1833,7 @@ class SettingsDialog(QDialog):
         cfg["model"] = self.cb_model.currentData() or "large-v3-turbo"
         cfg["language"] = self.cb_lang.currentData() or "en"
         cfg["device"] = self.cb_mic.currentData()
+        cfg["audio_source"] = self.cb_src.currentData() or "mic"
         cfg["theme"] = "light" if self.cb_theme.currentIndex() == 1 else "dark"
         cfg["glossary"] = self.ed_gloss.toPlainText().strip()
         name = self.cb_course.currentText() or "默认课程"
@@ -2453,6 +2463,7 @@ def main() -> int:
     state.update(recording=False)
 
     def _stop_mic() -> None:
+        stream_holder["loop"] = False
         s = stream_holder["s"]
         if s is not None:
             try:
@@ -2509,6 +2520,32 @@ def main() -> int:
         win.set_status("正在录音", "#f87171")
 
     def _open_mic() -> bool:
+        # 系统声音：用 loopback 抓电脑正在播放的音频
+        if _load_config().get("audio_source", "mic") == "system":
+            def _loop():
+                try:
+                    import soundcard as sc
+
+                    spk = sc.default_speaker()
+                    mic = sc.get_microphone(id=str(spk.name), include_loopback=True)
+                    with mic.recorder(samplerate=SR, channels=1, blocksize=BLOCK) as rec:
+                        while stream_holder.get("loop", False):
+                            data = rec.record(numframes=BLOCK)
+                            if data is None or len(data) == 0:
+                                continue
+                            mono = data[:, 0] if data.ndim > 1 else data
+                            on_audio(np.asarray(mono, dtype=np.float32))
+                except Exception as exc:
+                    _log(f"环回采集失败 {exc.__class__.__name__}: {exc}")
+
+            stream_holder["loop"] = True
+            t = threading.Thread(target=_loop, daemon=True)
+            t.start()
+            stream_holder["s"] = None
+            stream_holder["loop_thread"] = t
+            _log("音频来源=系统声音(环回)")
+            return True
+
         def cb(indata, frames, t, status):
             on_audio(indata[:, 0].astype(np.float32) / 32768.0)
 
@@ -2521,6 +2558,7 @@ def main() -> int:
         except Exception:
             return False
         stream_holder["s"] = s
+        _log("音频来源=麦克风")
         return True
 
     def _toggle_pause() -> None:
