@@ -1,0 +1,21 @@
+{
+  "model": "large-v3-turbo",
+  "threads": 4,
+  "device": null,
+  "translator": "local",
+  "api_key": "",
+  "prompt": "",
+  "theme": "light",
+  "lock_size": false,
+  "font_scale": 1.0,
+  "max_lines": 3,
+  "opacity": 100,
+  "courses": [
+    {
+      "name": "默认课程",
+      "glossary": "week six / 第六周\nlab two / 实验二\npresentation 展示  upload 上传  worksheet 工作表"
+    }
+  ],
+  "active_course": "默认课程",
+  "glossary": "week six / 第六周\nlab two / 实验二\npresentation 展示  upload 上传  worksheet 工作表"
+}
