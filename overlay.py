@@ -1623,8 +1623,9 @@ def _input_devices() -> list[tuple[object, str]]:
 
 
 class SettingsDialog(QDialog):
-    TR_LABELS = ["本地翻译（不用 key）", "DeepSeek（用 key，质量更好）", "不翻译，只出英文"]
-    TR_VALUES = ["local", "deepseek", "off"]
+    TR_LABELS = ["DeepSeek（用 key，质量最好）", "MyMemory（免费，不用 key）",
+                 "本地翻译（不用 key，离线）", "不翻译，只出英文"]
+    TR_VALUES = ["deepseek", "mymemory", "local", "off"]
     MODELS = ["small", "medium", "large-v3-turbo"]
 
     def __init__(self, parent, cfg: dict):
@@ -2436,7 +2437,9 @@ def main() -> int:
 
         if new.get("translator") != old.get("translator") or new.get("api_key") != old.get("api_key"):
             t = new.get("translator")
-            if t == "deepseek" and new.get("api_key"):
+            if t == "mymemory":
+                tr.reload(lambda: MyMemory())
+            elif t == "deepseek" and new.get("api_key"):
                 tr.reload(
                     lambda: DeepSeek(new["api_key"], glossary=_active_glossary(new))
                 )
