@@ -8,8 +8,10 @@
 [![Offline](https://img.shields.io/badge/%E5%BD%95%E9%9F%B3-%E4%B8%8D%E4%B8%8A%E4%BC%A0-green.svg)]()
 
 <p align="center">
-  <img src="assets/screenshot.png" width="760" alt="实时字幕浮窗">
+  <img src="assets/demo.gif" width="760" alt="实时字幕演示">
 </p>
+
+<p align="center"><i>老师说什么，几秒内变成中文 · 灰色是草稿，黑色是定稿</i></p>
 
 ---
 
