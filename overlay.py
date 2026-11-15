@@ -530,6 +530,7 @@ def _log(msg: str) -> None:
 
 
 
+def _sentence_case(s: str) -> str:
     # 双语模型把 uh/ah/um 写成了汉字，这里映射回英文而不是删掉，
     # 老师真说的中文词保留原样（那是信息，不该丢）
     for k, v in _FILLER_MAP.items():
