@@ -2027,12 +2027,14 @@ class SummaryDialog(QDialog):
 
         tabs = QTabWidget()
         self.vue = QTextBrowser()
+        self.vue.setStyleSheet("font-size:15px;")
         self.vue.setMarkdown(body)
         self.vue.setOpenLinks(False)
         self.vue.anchorClicked.connect(self._play)
         tabs.addTab(self.vue, "纪要")
 
         self.vtx = QTextBrowser()
+        self.vtx.setStyleSheet("font-size:14px;")
         self.vtx.setHtml(self._transcript_html(transcript or "（没有记录）"))
         self.vtx.setOpenLinks(False)
         self.vtx.anchorClicked.connect(self._play)
