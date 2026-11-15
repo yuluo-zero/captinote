@@ -2044,7 +2044,8 @@ class SummaryDialog(QDialog):
         # 问答：像千问一样放在最下面，问过之后才展开记录区
         self.chat = QTextBrowser()
         self.chat.setVisible(False)
-        self.chat.setMaximumHeight(190)
+        self.chat.setFixedHeight(96)          # 固定小条，不跟布局抢空间
+        self.chat.setStyleSheet("font-size:13px;")
         lay.addWidget(self.chat)
 
         row2 = QHBoxLayout()
