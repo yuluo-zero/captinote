@@ -2266,6 +2266,8 @@ def main() -> int:
     ap.add_argument("--model", default=None)
     ap.add_argument("--threads", type=int, default=None)
     ap.add_argument("--file", default=None, help="用音频文件代替麦克风（测试）")
+    ap.add_argument("--test-loop", action="store_true", help="自检：录 5 秒系统声音并报告音量")
+    ap.add_argument("--auto-rec", action="store_true", help="自检：启动 2 秒后自动开始录音")
     ap.add_argument("--device", default=None, help="麦克风设备名或序号")
     ap.add_argument("--prompt", default=None)
     ap.add_argument("--translator", default=None, choices=["local", "mymemory", "deepseek", "off"])
@@ -2493,34 +2495,32 @@ def main() -> int:
 
         # 草稿链路：本地流式识别 + 本地翻译（不花钱、不上网）
         try:
-            if state.get("draft") is None:
-                state["draft"] = DraftStreamer()
-                state["draft"].on_draft = state["draft_tr"].submit
+            _cfg_s = _load_config()
+            if (_cfg_s.get("audio_source", "mic") != "system"
+                    and _cfg_s.get("language", "en") == "en"):
+                if state.get("draft") is None:
+                    state["draft"] = DraftStreamer()
+                    state["draft"].on_draft = state["draft_tr"].submit
+                else:
+                    state["draft"].reset()
             else:
-                state["draft"].reset()
+                state["draft"] = None
         except Exception:
             state["draft"] = None
 
-        def cb(indata, frames, t, status):
-            on_audio(indata[:, 0].astype(np.float32) / 32768.0)
-
-        try:
-            s = sd.InputStream(
-                samplerate=SR, blocksize=BLOCK, channels=1, dtype="int16",
-                device=args.device, callback=cb,
-            )
-            s.start()
-        except Exception as exc:
+        # 统一走 _open_mic：麦克风 / 系统声音都由它决定
+        if not _open_mic():
             session.discard()
             session = None
-            win.set_status(f"麦克风打不开：{exc.__class__.__name__}", "#f87171")
+            win.set_status("音频设备打不开", "#f87171")
+            _log("打开音频设备失败")
             return
-        stream_holder["s"] = s
         state["recording"] = True
         state["paused"] = False
         state["ctx"] = None
         win.set_running(True)
-        win.set_status("正在录音", "#f87171")
+        src = "系统声音" if _load_config().get("audio_source") == "system" else "麦克风"
+        win.set_status(f"正在录音 · {src}", "#f87171")
 
     def _open_mic() -> bool:
         # 系统声音：用 loopback 抓电脑正在播放的音频
@@ -2729,6 +2729,8 @@ def main() -> int:
     QTimer.singleShot(2500, _offer_recovery)
     win.btn_main.clicked.connect(_toggle_rec)
     win.btn_pause2.clicked.connect(_toggle_pause)
+    if getattr(args, "auto_rec", False):
+        QTimer.singleShot(2000, win.btn_main.click)
 
     icon_png = os.path.join(ROOT, "app.png")
     app_icon = QIcon(icon_png) if os.path.exists(icon_png) else QIcon()
@@ -2812,6 +2814,35 @@ def main() -> int:
             app.quit()
 
     bridge.feed_done.connect(_on_feed_done)
+
+    if args.test_loop:
+        import soundcard as sc
+
+        try:
+            spk = sc.default_speaker()
+            print("默认扬声器:", spk.name, flush=True)
+            mic = sc.get_microphone(id=str(spk.name), include_loopback=True)
+            print("环回设备:", mic.name if mic else "拿不到", flush=True)
+            chunks = []
+            with mic.recorder(samplerate=SR, channels=1, blocksize=1600) as r:
+                for _ in range(50):
+                    d = r.record(numframes=1600)
+                    if d is not None and len(d):
+                        chunks.append(d[:, 0].copy())
+            if chunks:
+                a = np.concatenate(chunks)
+                rms = float(np.sqrt(np.mean(a.astype(np.float32) ** 2)))
+                peak = float(np.max(np.abs(a)))
+                print(f"采到 {len(a)/SR:.1f}s  RMS={rms:.4f}  峰值={peak:.3f}", flush=True)
+                print("判定:", "有声音" if rms > 0.01 else "几乎静音（电脑可能没在放声音）", flush=True)
+            else:
+                print("一个样本都没采到", flush=True)
+        except Exception as exc:
+            import traceback
+
+            traceback.print_exc()
+            print("失败:", exc.__class__.__name__, exc, flush=True)
+        return 0
 
     if args.file:
         state["auto_test"] = bool(args.auto_test)
