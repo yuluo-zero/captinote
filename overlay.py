@@ -723,11 +723,19 @@ class TranslatorWorker:
                 else:
                     out = self.tr.translate(text, ctx)
             except Exception:
-                try:
-                    out = self.tr.translate(text, ctx)
-                except Exception:
-                    out = ""
+                out = ""
                 fixed = text
+            # 主引擎挂了或者返回失败串，自动换免费引擎兜底
+            if (not out) or out.startswith("[翻译失败"):
+                try:
+                    if getattr(self, "_fb", None) is None:
+                        self._fb = MyMemory()
+                    alt = self._fb.translate(text, ctx)
+                    if alt:
+                        out = alt
+                        _log("翻译兜底 MyMemory 生效")
+                except Exception as exc:
+                    _log(f"翻译兜底也失败 {exc.__class__.__name__}")
             if out and self.on_text:
                 self.history.append((fixed, out))
                 if len(self.history) > 6:
@@ -2497,15 +2505,11 @@ def main() -> int:
         # 草稿链路：本地流式识别 + 本地翻译（不花钱、不上网）
         try:
             _cfg_s = _load_config()
-            if (_cfg_s.get("audio_source", "mic") != "system"
-                    and _cfg_s.get("language", "en") == "en"):
-                if state.get("draft") is None:
-                    state["draft"] = DraftStreamer()
-                    state["draft"].on_draft = state["draft_tr"].submit
-                else:
-                    state["draft"].reset()
+            if state.get("draft") is None:
+                state["draft"] = DraftStreamer()
+                state["draft"].on_draft = state["draft_tr"].submit
             else:
-                state["draft"] = None
+                state["draft"].reset()
         except Exception:
             state["draft"] = None
 
