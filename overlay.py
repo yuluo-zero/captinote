@@ -600,11 +600,14 @@ class DraftStreamer:
 
 
 class Recognizer:
-    def __init__(self, model_name: str, threads: int, prompt: str, language: str = "en"):
+    def __init__(self, model_name: str, threads: int, prompt: str,
+                 language: str = "en", engine: str = "whisper"):
         self.model_name = model_name
         self.threads = threads
         self.prompt = prompt
         self.language = language or "en"
+        self.engine = engine
+        self.para = None
         self.model: WhisperModel | None = None
         self.jobs: queue.Queue = queue.Queue()
         self.on_text = None
@@ -612,6 +615,28 @@ class Recognizer:
         threading.Thread(target=self._work, daemon=True).start()
 
     def _load(self):
+        if self.engine == "parakeet":
+            try:
+                import sherpa_onnx
+
+                d = os.path.join(MODEL_DIR, "parakeet-v2-int8")
+                self.para = sherpa_onnx.OfflineRecognizer.from_transducer(
+                    encoder=os.path.join(d, "encoder.int8.onnx"),
+                    decoder=os.path.join(d, "decoder.int8.onnx"),
+                    joiner=os.path.join(d, "joiner.int8.onnx"),
+                    tokens=os.path.join(d, "tokens.txt"),
+                    num_threads=self.threads,
+                    sample_rate=SR,
+                    feature_dim=80,
+                    decoding_method="greedy_search",
+                    model_type="nemo_transducer",
+                    provider="cpu",
+                )
+                _log("识别引擎 Parakeet 已加载")
+                return
+            except Exception as exc:
+                _log(f"Parakeet 加载失败 {exc.__class__.__name__}: {exc}，退回 Whisper")
+                self.engine = "whisper"
         try:
             self.model = WhisperModel(
                 self.model_name,
@@ -637,10 +662,23 @@ class Recognizer:
     def _work(self):
         while True:
             audio, ctx, skip = self.jobs.get()
-            while self.model is None:
+            while self.model is None and self.para is None:
                 time.sleep(0.2)
             ctx_n = 0 if ctx is None else len(ctx)
             feed = audio if not ctx_n else np.concatenate([ctx, audio])
+            if self.engine == "parakeet" and self.para is not None:
+                try:
+                    st = self.para.create_stream()
+                    st.accept_waveform(SR, audio)  # Parakeet 不用上下文，避免重复
+                    self.para.decode_stream(st)
+                    text = st.result.text.strip()
+                    if text:
+                        self.on_text(text)
+                        _log(f"ASR(par) ok {len(feed)/SR:.1f}s → {len(text)} 字")
+                    continue
+                except Exception as exc:
+                    _log(f"Parakeet 识别失败 {exc.__class__.__name__}")
+                    continue
             try:
                 segs, _ = self.model.transcribe(
                     feed,
@@ -1722,6 +1760,15 @@ class SettingsDialog(QDialog):
                 self.cb_lang.setCurrentIndex(_i)
         f1.addRow("识别语言", self.cb_lang)
 
+        self.cb_engine = QComboBox()
+        self.cb_engine.addItem("Whisper（有标点，推荐）", "whisper")
+        self.cb_engine.addItem("Parakeet（快约 3.5 倍，无标点）", "parakeet")
+        _eng = self._cfg.get("asr_engine", "whisper")
+        for _i in range(self.cb_engine.count()):
+            if self.cb_engine.itemData(_i) == _eng:
+                self.cb_engine.setCurrentIndex(_i)
+        f1.addRow("识别引擎", self.cb_engine)
+
         self.cb_mic = QComboBox()
         for idx, name in _input_devices():
             self.cb_mic.addItem(str(name), idx)
@@ -1858,6 +1905,7 @@ class SettingsDialog(QDialog):
         cfg["api_key"] = self.ed_key.text().strip()
         cfg["model"] = self.cb_model.currentData() or "large-v3-turbo"
         cfg["language"] = self.cb_lang.currentData() or "en"
+        cfg["asr_engine"] = self.cb_engine.currentData() or "whisper"
         cfg["device"] = self.cb_mic.currentData()
         cfg["audio_source"] = self.cb_src.currentData() or "mic"
         cfg["theme"] = "light" if self.cb_theme.currentIndex() == 1 else "dark"
@@ -2385,7 +2433,8 @@ def main() -> int:
     bridge = Bridge()
     _cfg1 = _load_config()
     rec = Recognizer(_resolve_model(args.model), args.threads, args.prompt,
-                     language=_cfg1.get("language", "en"))
+                     language=_cfg1.get("language", "en"),
+                     engine=_cfg1.get("asr_engine", "whisper"))
     if args.translator == "local":
         factory = lambda: LocalMarian()
     elif args.translator == "mymemory":
