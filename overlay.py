@@ -934,7 +934,7 @@ def llm_summary(text: str, key: str, target: str = "zh") -> dict:
         data=body,
         headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}"},
     )
-    with urllib.request.urlopen(req, timeout=120) as resp:
+    with urllib.request.urlopen(req, timeout=30) as resp:
         data = json.load(resp)
     return json.loads(data["choices"][0]["message"]["content"])
 
@@ -964,7 +964,7 @@ def llm_qa(key: str, transcript: str, summary: str, question: str) -> str:
         data=body,
         headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}"},
     )
-    with urllib.request.urlopen(req, timeout=90) as resp:
+    with urllib.request.urlopen(req, timeout=25) as resp:
         data = json.load(resp)
     return data["choices"][0]["message"]["content"].strip()
 
