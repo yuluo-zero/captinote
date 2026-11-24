@@ -628,13 +628,15 @@ class Recognizer:
             traceback.print_exc()
             print(f"[ASR] 模型加载失败: {self.load_error}", flush=True)
 
-    def submit(self, audio: np.ndarray, ctx: np.ndarray | None = None):
+    def submit(self, audio: np.ndarray, ctx: np.ndarray | None = None,
+               skip: float = 0.0):
+        """skip: 窗口内早于这个秒数的词已经输出过，不再重复。"""
         if self.jobs.qsize() < 4:
-            self.jobs.put((audio, ctx))
+            self.jobs.put((audio, ctx, skip))
 
     def _work(self):
         while True:
-            audio, ctx = self.jobs.get()
+            audio, ctx, skip = self.jobs.get()
             while self.model is None:
                 time.sleep(0.2)
             ctx_n = 0 if ctx is None else len(ctx)
@@ -655,8 +657,8 @@ class Recognizer:
                     if s.no_speech_prob < 0.8 and s.avg_logprob > -1.5
                 ]
                 if ctx_n:
-                    # 只要上下文之后的新词，前面已经显示过的不重复
-                    cut = ctx_n / SR - 0.15
+                    # 按绝对时间切：早于 skip 的词已经输出过
+                    cut = max(0.0, skip)
                     words = [w.word for s in kept for w in (s.words or [])
                              if w.start >= cut]
                     text = " ".join(" ".join(words).split())
@@ -2402,6 +2404,7 @@ def main() -> int:
     draft_tr = TranslatorWorker(lambda: LocalMarian())
 
     def _on_draft(en: str, zh: str):
+        state["drafts"] = state.get("drafts", 0) + 1
         if os.environ.get("DSH_DEBUG_DRAFT"):
             print(f"DRAFT: {en}\n   → {zh}", flush=True)
         bridge.draft.emit(en, zh)
@@ -2552,6 +2555,9 @@ def main() -> int:
         state["recording"] = True
         state["paused"] = False
         state["last_loud"] = time.time()
+        state["pos"] = 0.0
+        state["drafts"] = 0
+        state["emitted"] = 0.0
         state["silent_flag"] = False
         state["ctx"] = None
         win.set_running(True)
@@ -2620,6 +2626,7 @@ def main() -> int:
     def _finish(recorded: Session) -> None:
         key = _load_config().get("api_key", "").strip()
         holder["dir"] = recorded.dir
+        _log(f"对账 草稿 {state.get('drafts', 0)} 条 / 定稿 {len([l for l in text.splitlines() if l.strip()])} 行")
         text = recorded.read_text()
         holder["transcript"] = text
         if not key:
@@ -2826,10 +2833,16 @@ def main() -> int:
         if session is not None:
             session.write_audio(audio)
         piece = seg_holder["seg"].feed(audio)
+        state["pos"] = state.get("pos", 0.0) + len(audio) / SR
         if piece is not None and len(piece) > SR // 5:
-            rec.submit(piece, state.get("ctx"))
-            # 记下这一段尾巴，下次当上下文用（滑动窗口）
+            ctx = state.get("ctx")
+            ctx_n = 0 if ctx is None else len(ctx)
+            feed_len = (ctx_n + len(piece)) / SR
+            window_start = max(0.0, state["pos"] - feed_len)
+            skip = max(0.0, state.get("emitted", 0.0) - window_start)
+            rec.submit(piece, ctx, skip)
             state["ctx"] = piece[-SR * 8:].copy()
+            state["emitted"] = state["pos"]
         ds = state.get("draft")
         if ds is not None:
             try:
