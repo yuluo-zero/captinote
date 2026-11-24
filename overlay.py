@@ -358,12 +358,19 @@ class VadSegmenter:
     """Silero VAD 断句：按语音概率切，比能量阈值稳得多。
 
     每 200ms 对最近 512ms 音频算一次语音概率，用滞回判断起止。
+    参数可在 config.json 里调：seg_silence_ms / seg_min_s / seg_max_s
     """
 
     FRAME = 512
     WINDOW = 8192
 
-    def __init__(self, silence_ms=700, max_ms=10000, pre_roll_ms=300):
+    def __init__(self, silence_ms=None, max_ms=None, pre_roll_ms=300):
+        _cfg = _load_config()
+        if silence_ms is None:
+            silence_ms = int(_cfg.get("seg_silence_ms", 700))
+        if max_ms is None:
+            max_ms = int(float(_cfg.get("seg_max_s", 10)) * 1000)
+        self.min_n = int(float(_cfg.get("seg_min_s", 5)) * SR)
         from faster_whisper.vad import get_vad_model
 
         self.model = get_vad_model()
@@ -422,7 +429,7 @@ class VadSegmenter:
 
         if self.silence >= self.silence_n or self.seg_len >= self.max_n:
             # 短段快出字；上下文由滑动窗口补足，见 submit(ctx=...)
-            if self.seg_len >= SR * 5:
+            if self.seg_len >= self.min_n:
                 return self._emit()
             self.silence = 0
         return None
@@ -582,21 +589,22 @@ class DraftStreamer:
 
         cur = self.rec.get_result(self.stream).strip()
         now = time.time()
-        if cur != self._last_text:
-            self._last_text = cur
-            self._last_change = now
 
-        # 够长或停顿够久就推一次草稿，然后清空重新攒
-        words = len(cur.split())
-        idle = now - self._last_change
-        if cur and (words >= 12 or idle > 1.1):
+        # 句末：交给定稿，然后清空重新攒下一句
+        if self.rec.is_endpoint(self.stream) and cur:
             text = _sentence_case(cur)
-            if text and not _is_filler_only(text) and self.on_draft and (now - self._last_tx) > 0.4:
-                self._last_tx = now
+            if text and not _is_filler_only(text) and self.on_draft:
                 self.on_draft(text)
-                self.reset()
-            elif _is_filler_only(text):
-                self.reset()
+            self.reset()
+            return
+
+        # 说话中：约每 250ms 把当前 partial 整块刷新一次（逐词跟手）
+        if cur and cur != self._last_text and (now - self._last_tx) > 0.25:
+            self._last_text = cur
+            self._last_tx = now
+            text = _sentence_case(cur)
+            if text and not _is_filler_only(text) and self.on_draft:
+                self.on_draft(text)
 
 
 class Recognizer:
@@ -1551,6 +1559,12 @@ class Overlay(QWidget):
         self.status.setText(
             f'<span style="color:{color}">&#9679;</span>&nbsp;&nbsp;{text}'
         )
+
+    def set_clickthrough(self, on: bool):
+        """锁定鼠标穿透：点不到窗口，只能用托盘菜单解除。"""
+        self._clickthrough = on
+        self.setWindowFlag(Qt.WindowTransparentForInput, on)
+        self.show()
 
     def set_silence(self, on: bool):
         """长时间没有声音时给出明确提示，别让人以为程序卡了。"""
@@ -2857,6 +2871,8 @@ def main() -> int:
     act_settings = menu.addAction("设置…")
     act_folder = menu.addAction("打开记录文件夹")
     act_import = menu.addAction("导入外部记录（AudioScript 等导出的 md）…")
+    act_through = menu.addAction("鼠标穿透（锁定后只能用托盘解除）")
+    act_through.setCheckable(True)
     menu.addSeparator()
     act_quit = menu.addAction("退出")
     tray.setContextMenu(menu)
@@ -2902,6 +2918,7 @@ def main() -> int:
         _finish_text(text, key)
 
     act_import.triggered.connect(_import_record)
+    act_through.toggled.connect(win.set_clickthrough)
     act_quit.triggered.connect(app.quit)
     tray.activated.connect(
         lambda reason: win.setVisible(not win.isVisible())
