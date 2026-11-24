@@ -2801,6 +2801,39 @@ def main() -> int:
     bridge.draft.connect(win.set_draft)
     bridge.silence.connect(win.set_silence)
 
+    def _model_watch():
+        """模型没加载完时，把下载/加载进度显示出来，别让人以为卡死。"""
+        loaded = (getattr(rec, "model", None) is not None) or (getattr(rec, "para", None) is not None)
+        if loaded:
+            if not state.get("model_ready"):
+                state["model_ready"] = True
+                _log("模型加载完成")
+                if not state.get("recording"):
+                    win.set_status("准备就绪 · 点「开始」", "#94a3b8")
+            return
+        if state.get("model_ready"):
+            return
+        try:
+            total = 0
+            mdir = os.path.join(ROOT, "models")
+            for root, _dirs, files in os.walk(mdir):
+                for fn in files:
+                    try:
+                        total += os.path.getsize(os.path.join(root, fn))
+                    except OSError:
+                        pass
+            mb = total // (1024 * 1024)
+        except Exception:
+            mb = 0
+        if mb > 50:
+            win.set_status(f"正在加载识别模型… 已就位 {mb} MB", "#fbbf24")
+        else:
+            win.set_status("首次启动：正在下载识别模型（约 1.6 GB），请保持联网…", "#fbbf24")
+
+    _model_timer = QTimer()
+    _model_timer.timeout.connect(_model_watch)
+    _model_timer.start(1000)
+
     def _last_unfinished():
         base = os.path.join(ROOT, "recordings")
         best = None
