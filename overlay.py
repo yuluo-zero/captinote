@@ -1778,7 +1778,7 @@ class SettingsDialog(QDialog):
 
         self.cb_engine = QComboBox()
         self.cb_engine.addItem("Whisper（有标点，推荐）", "whisper")
-        self.cb_engine.addItem("Parakeet（快约 3.5 倍，无标点）", "parakeet")
+        self.cb_engine.addItem("Parakeet（快约 3.5 倍，标点由翻译补）", "parakeet")
         _eng = self._cfg.get("asr_engine", "whisper")
         for _i in range(self.cb_engine.count()):
             if self.cb_engine.itemData(_i) == _eng:
