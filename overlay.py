@@ -2807,6 +2807,7 @@ def main() -> int:
     menu.addSeparator()
     act_settings = menu.addAction("设置…")
     act_folder = menu.addAction("打开记录文件夹")
+    act_import = menu.addAction("导入外部记录（AudioScript 等导出的 md）…")
     menu.addSeparator()
     act_quit = menu.addAction("退出")
     tray.setContextMenu(menu)
@@ -2818,6 +2819,40 @@ def main() -> int:
     act_folder.triggered.connect(
         lambda: os.startfile(holder["dir"] or os.path.join(ROOT, "recordings"))
     )
+
+    def _import_record():
+        """导入别的工具导出的逐字稿，直接生成纪要与术语。"""
+        path, _ = QFileDialog.getOpenFileName(
+            win, "选择导出的记录", "", "文本 (*.md *.txt);;所有文件 (*)")
+        if not path:
+            return
+        try:
+            with open(path, encoding="utf-8-sig") as f:
+                text = f.read()
+        except Exception as exc:
+            win.set_status(f"读不了这个文件：{exc.__class__.__name__}", "#f87171")
+            return
+        if len(text.strip()) < 50:
+            win.set_status("文件内容太少，没东西可总结", "#fbbf24")
+            return
+        stamp = datetime.datetime.now().strftime("%m%d_%H%M")
+        folder = os.path.join(ROOT, "recordings", f"{stamp}_导入")
+        try:
+            os.makedirs(folder, exist_ok=True)
+            with open(os.path.join(folder, "transcript.md"), "w", encoding="utf-8") as f:
+                f.write(text)
+        except Exception:
+            folder = os.path.dirname(path)
+        holder["dir"] = folder
+        holder["transcript"] = text
+        key = _load_config().get("api_key", "").strip()
+        if not key:
+            win.set_status("没有 API key，无法生成纪要", "#fbbf24")
+            return
+        _log(f"导入外部记录 {os.path.basename(path)} {len(text)} 字")
+        _finish_text(text, key)
+
+    act_import.triggered.connect(_import_record)
     act_quit.triggered.connect(app.quit)
     tray.activated.connect(
         lambda reason: win.setVisible(not win.isVisible())
