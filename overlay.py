@@ -1042,6 +1042,7 @@ class Bridge(QObject):
     level = Signal(float)
     speaking = Signal(bool)
     draft = Signal(str, str)
+    silence = Signal(bool)
 
 
 class Overlay(QWidget):
@@ -1067,6 +1068,7 @@ class Overlay(QWidget):
         self.font_scale = 1.0
         self.max_lines = 3
         self.opacity = 100
+        self.draft_zh = False
         self.scale = 1.0
         self.theme = "dark"
         self.before_close = None
@@ -1478,6 +1480,7 @@ class Overlay(QWidget):
         pass
 
     def set_running(self, running: bool):
+        self._running = running
         self.btn_main.setText("■ 停止" if running else "▶ 开始")
         self.btn_pause2.setVisible(running)
         if not running:
@@ -1509,6 +1512,15 @@ class Overlay(QWidget):
             f'<span style="color:{color}">&#9679;</span>&nbsp;&nbsp;{text}'
         )
 
+    def set_silence(self, on: bool):
+        """长时间没有声音时给出明确提示，别让人以为程序卡了。"""
+        if not getattr(self, "_running", False):
+            return
+        if on:
+            self.set_status("麦克风几乎没声音，检查设备或换个麦克风", "#f87171")
+        else:
+            self.set_status("正在录音 · 已恢复", "#f87171")
+
     def set_speaking(self, on: bool):
         """有人说话时让状态点呼吸，表示"在听，字还在路上"。"""
         self._speaking = on
@@ -1528,11 +1540,11 @@ class Overlay(QWidget):
         s = self.scale * self.font_scale
         c = self._palette()
         if depth <= 0:
-            zs, es, zp, ep = 22.0, 12.5, 1.0, 1.0
+            zs, es, zp, ep = 19.0, 11.0, 1.0, 1.0
         elif depth == 1:
-            zs, es, zp, ep = 17.0, 11.5, 0.62, 0.55
+            zs, es, zp, ep = 15.0, 10.0, 0.62, 0.55
         else:
-            zs, es, zp, ep = 15.0, 11.0, 0.34, 0.30
+            zs, es, zp, ep = 13.0, 9.5, 0.34, 0.30
         return (
             f'<div style="color:{c["en"]};font-size:{es*s:.0f}px;'
             f'line-height:150%;opacity:{ep}">{html.escape(en)}</div>'
@@ -1551,20 +1563,22 @@ class Overlay(QWidget):
             lbl.setText(self._html(en, zh, len(tail) - 1 - k))
 
     def set_draft(self, en: str = "", zh: str = ""):
-        """正在说的那一句：上面英文原话，下面中文草稿，说完会被定稿替换。"""
+        """正在说的那一句：一块固定高度区域，整块替换，说完升格成定稿。"""
         en = (en or "").strip()
-        zh = (zh or "").strip()
+        zh = (zh or "").strip() if getattr(self, "draft_zh", False) else ""
         if not en and not zh:
             self.draft.setText("")
             self.draft.setVisible(False)
+            self.draft.setFixedHeight(0)
             return
         parts = []
         if en:
-            parts.append(f'<span style="font-size:14px">⋯ {html.escape(en)}</span>')
+            parts.append(f'<span style="font-size:12px;color:#9AA3B2">⋯ {html.escape(en)}</span>')
         if zh:
-            parts.append(f'<span style="font-size:17px">⋯ {html.escape(zh)}</span>')
+            parts.append(f'<span style="font-size:15px;color:#9AA3B2">⋯ {html.escape(zh)}</span>')
         self.draft.setText("<br>".join(parts))
         self.draft.setTextFormat(Qt.RichText)
+        self.draft.setFixedHeight(58 if zh else 36)   # 固定高，绝不撑大压住正文
         self.draft.setVisible(True)
 
     def show_text(self, orig: str, trans: str):
@@ -2301,6 +2315,18 @@ def main() -> int:
     if args.translator == "deepseek" and not args.key:
         args.translator = "local"
 
+    # 单实例：已经有一个在跑就退出，避免两个窗口抢麦克风
+    if sys.platform == "win32":
+        try:
+            import ctypes
+
+            _h = ctypes.windll.kernel32.CreateMutexW(None, False, "CaptiNote.SingleInstance")
+            if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+                print("已有一个 CaptiNote 在运行，本实例退出", flush=True)
+                return 0
+        except Exception:
+            pass
+
     app = QApplication(sys.argv)
     # 主面板是 Qt.Tool，关掉设置/总结对话框时不能被当成"最后一个窗口"而退出
     app.setQuitOnLastWindowClosed(False)
@@ -2525,6 +2551,8 @@ def main() -> int:
             return
         state["recording"] = True
         state["paused"] = False
+        state["last_loud"] = time.time()
+        state["silent_flag"] = False
         state["ctx"] = None
         win.set_running(True)
         src = "系统声音" if _load_config().get("audio_source") == "system" else "麦克风"
@@ -2699,6 +2727,7 @@ def main() -> int:
     bridge.level.connect(win.meter.push)
     bridge.speaking.connect(win.set_speaking)
     bridge.draft.connect(win.set_draft)
+    bridge.silence.connect(win.set_silence)
 
     def _last_unfinished():
         base = os.path.join(ROOT, "recordings")
@@ -2735,6 +2764,24 @@ def main() -> int:
             _finish_text(holder["transcript"], key)
 
     QTimer.singleShot(2500, _offer_recovery)
+    def _silence_watch():
+        if not state.get("recording") or state.get("paused"):
+            return
+        silent_for = time.time() - state.get("last_loud", time.time())
+        was = state.get("silent_flag", False)
+        if silent_for > 6.0 and not was:
+            state["silent_flag"] = True
+            bridge.silence.emit(True)
+            _log("静音超过6秒，提示用户检查设备")
+        elif silent_for < 1.5 and was:
+            state["silent_flag"] = False
+            bridge.silence.emit(False)
+            _log("声音恢复")
+
+    _silence_timer = QTimer()
+    _silence_timer.timeout.connect(_silence_watch)
+    _silence_timer.start(2000)
+
     win.btn_main.clicked.connect(_toggle_rec)
     win.btn_pause2.clicked.connect(_toggle_pause)
     if getattr(args, "auto_rec", False):
@@ -2793,6 +2840,10 @@ def main() -> int:
         if spk != state.get("speaking"):
             state["speaking"] = spk
             bridge.speaking.emit(spk)
+
+        # 记录最近一次听到声音的时间，判断交给看门狗定时器
+        if db > -60.0:
+            state["last_loud"] = time.time()
 
     def _confirm_quit() -> bool:
         if not state["recording"]:
