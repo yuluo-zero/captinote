@@ -503,6 +503,12 @@ def _resolve_model(name: str) -> str:
     return name
 
 
+_GLOSS_STOP = {
+    "the", "and", "for", "with", "ai", "lab", "week", "two", "six",
+    "one", "yes", "ok", "okay", "you", "are", "this", "that", "from",
+    "not", "our", "his", "her", "they", "can",
+}
+
 _FILLER_CHARS = "呃啊嗯额哦唔唉哎噢喔"
 _FILLER_WORDS = {"uh", "um", "ah", "er", "mm", "hmm", "oh", "eh", "erm", "hm"}
 
