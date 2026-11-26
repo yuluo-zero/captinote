@@ -2692,6 +2692,24 @@ def main() -> int:
         key = _load_config().get("api_key", "").strip()
         holder["dir"] = recorded.dir
         _log(f"对账 草稿 {state.get('drafts', 0)} 条 / 定稿 {len([l for l in text.splitlines() if l.strip()])} 行")
+        try:
+            _gl = _active_glossary(_load_config())
+            _terms = []
+            for _line in _gl.splitlines():
+                _line = _line.strip()
+                if not _line or _line.startswith("课程"):
+                    continue
+                for _part in _line.replace("/", " ").replace("／", " ").split():
+                    if (len(_part) >= 3 and _part.isascii()
+                            and any(c.isalpha() for c in _part)
+                            and _part.lower() not in _GLOSS_STOP):
+                        _terms.append(_part.lower())
+            _terms = sorted(set(_terms))
+            _low = text.lower()
+            _hit = [t for t in _terms if t in _low]
+            _log(f"术语命中 {len(_hit)}/{len(_terms)}：{', '.join(_hit[:12])}")
+        except Exception:
+            pass
         text = recorded.read_text()
         holder["transcript"] = text
         if not key:
