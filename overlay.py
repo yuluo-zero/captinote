@@ -3332,6 +3332,51 @@ def main() -> int:
             return
         _finish_text(text, key)
 
+    def _recheck_asr(folder: str) -> None:
+        """课后用 Whisper 把整段录音重识别一遍，写 transcript_whisper.md。"""
+        try:
+            src = None
+            for name in ("audio.opus", "audio.wav"):
+                p = os.path.join(folder or "", name)
+                if os.path.exists(p):
+                    src = p
+                    break
+            if src is None:
+                _log("课后复核：没有录音文件")
+                return
+            from faster_whisper.audio import decode_audio
+
+            _log("课后复核开始（Whisper 全量重识别）")
+            audio = decode_audio(src, sampling_rate=SR)
+            for _ in range(240):
+                if getattr(rec, "model", None) is not None:
+                    break
+                time.sleep(0.5)
+            got = getattr(rec, "model", None)
+            if got is None:
+                _log("课后复核跳过：Whisper 模型未就绪")
+                return
+            segs, _info = got.transcribe(
+                audio, language="en", beam_size=1, vad_filter=True,
+                condition_on_previous_text=False,
+                initial_prompt=DEFAULT_PROMPT)
+            lines = []
+            for sg in segs:
+                t = sg.text.strip()
+                if not t:
+                    continue
+                mm, ss = int(sg.start // 60), int(sg.start % 60)
+                lines.append(f"[{mm:02d}:{ss:02d}] {t}")
+            if len(lines) < 3:
+                _log("课后复核：结果太少，放弃")
+                return
+            out = os.path.join(folder, "transcript_whisper.md")
+            with open(out, "w", encoding="utf-8") as f:
+                f.write("# 课后复核转录（Whisper）\n\n" + "\n".join(lines) + "\n")
+            _log(f"课后复核完成 {len(lines)} 行 → transcript_whisper.md")
+        except Exception as exc:
+            _log(f"课后复核失败 {exc.__class__.__name__}: {exc}")
+
     def _retranslate_all(text: str, key: str, folder: str) -> None:
         """下课后按全文语境把逐句译文重译一遍，写 transcript_zh.md。"""
         try:
@@ -3363,6 +3408,8 @@ def main() -> int:
         win.set_status("正在生成总结…", "#94a3b8")
         threading.Thread(target=_retranslate_all,
                          args=(text, key, holder.get("dir")), daemon=True).start()
+        threading.Thread(target=_recheck_asr,
+                         args=(holder.get("dir"),), daemon=True).start()
 
         def work():
             try:
