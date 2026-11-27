@@ -283,6 +283,7 @@ class DeepSeek(Translator):
                             "规则：\n"
                             "1. 只改明显听错的词（同音词、术语、数字、周次），不要改写句式、不要补内容\n"
                             "2. 拿不准就原样保留，宁可不改\n"
+                            "2a. 参考上文语境理解本句；若上文明显译错，本句按语境译对，别跟着错\n"
                             "2b. fix 字段要补全标点和大小写：该断句的地方加逗号句号问号，"
                             "首字母大写；原文没有标点时也要补上\n"
                             f"3. {self._lang_word()}简洁口语化，术语首次出现写「译名（English）」\n"
@@ -770,7 +771,7 @@ class TranslatorWorker:
                 if self.on_text:
                     self.on_text(text, f"[翻译不可用] {self.error or ''}")
                 continue
-            ctx = " | ".join(f"{e} → {z}" for e, z in self.history[-2:])
+            ctx = " | ".join(f"{e} → {z}" for e, z in self.history[-4:])
             fixed, out = text, ""
             rich = getattr(self.tr, "translate_rich", None)
             try:
@@ -794,7 +795,7 @@ class TranslatorWorker:
                     _log(f"翻译兜底也失败 {exc.__class__.__name__}")
             if out and self.on_text:
                 self.history.append((fixed, out))
-                if len(self.history) > 6:
+                if len(self.history) > 10:
                     self.history.pop(0)
                 self.on_text(fixed, out)
 
@@ -1124,7 +1125,7 @@ class Overlay(QWidget):
         self.font_scale = 1.0
         self.max_lines = 3
         self.opacity = 100
-        self.draft_zh = False
+        self.draft_zh = True
         self.scale = 1.0
         self.theme = "dark"
         self.before_close = None
@@ -2476,6 +2477,16 @@ def main() -> int:
 
     def _on_draft(en: str, zh: str):
         state["drafts"] = state.get("drafts", 0) + 1
+        if not zh:
+            bridge.draft.emit(en, "")
+            return
+        now_t = time.time()
+        if now_t - state.get("draft_zh_t", 0) < 0.6:
+            bridge.draft.emit(en, state.get("last_zh", ""))
+            return
+        state["draft_zh_t"] = now_t
+        state["last_zh"] = zh
+        bridge.draft.emit(en, zh)
         if os.environ.get("DSH_DEBUG_DRAFT"):
             print(f"DRAFT: {en}\n   → {zh}", flush=True)
         bridge.draft.emit(en, zh)
@@ -2628,6 +2639,8 @@ def main() -> int:
         state["last_loud"] = time.time()
         state["pos"] = 0.0
         state["drafts"] = 0
+        state["last_zh"] = ""
+        state["draft_zh_t"] = 0
         state["emitted"] = 0.0
         state["silent_flag"] = False
         state["ctx"] = None
