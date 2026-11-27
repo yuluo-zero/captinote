@@ -53,6 +53,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QSlider,
+    QListWidget,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -2136,6 +2137,101 @@ def _rename_session(folder: str, title: str) -> str | None:
         return None
 
 
+class HistoryDialog(QDialog):
+    """历史记录：列出所有课堂录音，可看纪要、听回放。"""
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.setWindowTitle("历史记录")
+        self.setWindowFlags(self.windowFlags() | Qt.Tool)
+        self.resize(560, 460)
+        self._rows = []
+
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(16, 14, 16, 14)
+        lay.setSpacing(10)
+
+        self.lst = QListWidget()
+        lay.addWidget(self.lst, 1)
+
+        row = QHBoxLayout()
+        self.btn_sum = QPushButton("查看纪要")
+        self.btn_play = QPushButton("录音回放")
+        self.btn_dir = QPushButton("打开文件夹")
+        self.btn_close = QPushButton("关闭")
+        for b in (self.btn_sum, self.btn_play, self.btn_dir, self.btn_close):
+            row.addWidget(b)
+        lay.addLayout(row)
+
+        self.btn_close.clicked.connect(self.close)
+        self.btn_dir.clicked.connect(self._open_dir)
+        self.btn_play.clicked.connect(self._play)
+        self.btn_sum.clicked.connect(self._summary)
+        self.lst.itemDoubleClicked.connect(lambda _i: self._summary())
+
+        self._load()
+
+    def _load(self):
+        import glob
+
+        base = os.path.join(ROOT, "recordings")
+        dirs = [d for d in glob.glob(os.path.join(base, "*")) if os.path.isdir(d)]
+        dirs.sort(key=lambda d: os.path.getmtime(d), reverse=True)
+        for d in dirs:
+            name = os.path.basename(d)
+            try:
+                mt = datetime.datetime.fromtimestamp(os.path.getmtime(d))
+                when = mt.strftime("%m-%d %H:%M")
+            except Exception:
+                when = ""
+            dur = ""
+            for f in ("audio.opus", "audio.wav"):
+                fp = os.path.join(d, f)
+                if os.path.exists(fp):
+                    try:
+                        mb = os.path.getsize(fp) / 1048576
+                        dur = f"{mb*60/2.0:.0f} 分钟" if f.endswith("opus") else f"{mb*60/2.0:.0f} 分钟"
+                    except Exception:
+                        pass
+                    break
+            has_sum = "✓" if os.path.exists(os.path.join(d, "summary.md")) else " "
+            self.lst.addItem(f"{has_sum}  {when}   {name}")
+            self._rows.append(d)
+
+    def _cur(self):
+        i = self.lst.currentRow()
+        if i < 0 or i >= len(self._rows):
+            return None
+        return self._rows[i]
+
+    def _open_dir(self):
+        d = self._cur()
+        if d:
+            os.startfile(d)
+
+    def _play(self):
+        d = self._cur()
+        if d:
+            PlayerDialog(self, d).show()
+
+    def _summary(self):
+        d = self._cur()
+        if not d:
+            return
+        md_path = os.path.join(d, "summary.md")
+        if not os.path.exists(md_path):
+            QMessageBox.information(self, "没有纪要", "这次录音还没有生成纪要。")
+            return
+        with open(md_path, encoding="utf-8") as f:
+            md = f.read()
+        tx_path = os.path.join(d, "transcript.md")
+        tx = ""
+        if os.path.exists(tx_path):
+            with open(tx_path, encoding="utf-8-sig") as f:
+                tx = f.read()
+        SummaryDialog(self, os.path.basename(d), md, d, tx).show()
+
+
 class PlayerDialog(QDialog):
     """录音回放：进度条可拖、可暂停、可跳 10 秒。"""
 
@@ -3177,6 +3273,7 @@ def main() -> int:
     act_import = menu.addAction("导入外部记录（AudioScript 等导出的 md）…")
     act_through = menu.addAction("鼠标穿透（锁定后只能用托盘解除）")
     act_player = menu.addAction("录音回放…")
+    act_history = menu.addAction("历史记录…")
     act_through.setCheckable(True)
     menu.addSeparator()
     act_quit = menu.addAction("退出")
@@ -3240,6 +3337,7 @@ def main() -> int:
         PlayerDialog(win, d).show()
 
     act_player.triggered.connect(_open_player)
+    act_history.triggered.connect(lambda: HistoryDialog(win).show())
     act_quit.triggered.connect(app.quit)
     tray.activated.connect(
         lambda reason: win.setVisible(not win.isVisible())
