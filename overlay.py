@@ -52,6 +52,7 @@ from PySide6.QtWidgets import (
     QMenu,
     QMessageBox,
     QPlainTextEdit,
+    QSlider,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -1113,6 +1114,11 @@ def summary_md(obj: dict) -> str:
     return "\n".join(out)
 
 
+def _fmt_time(sec) -> str:
+    sec = max(0, int(sec))
+    return "%02d:%02d" % (sec // 60, sec % 60)
+
+
 def _mmss(stamp: str) -> int:
     try:
         parts = [int(x) for x in str(stamp).replace("：", ":").split(":")]
@@ -2130,6 +2136,150 @@ def _rename_session(folder: str, title: str) -> str | None:
         return None
 
 
+class PlayerDialog(QDialog):
+    """录音回放：进度条可拖、可暂停、可跳 10 秒。"""
+
+    def __init__(self, parent, folder: str):
+        super().__init__(parent)
+        self.setWindowTitle("录音回放")
+        self.setWindowFlags(self.windowFlags() | Qt.Tool)
+        self.resize(520, 150)
+        self._folder = folder
+        self._data = None
+        self._pos = 0
+        self._playing = False
+        self._stream = None
+
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(16, 14, 16, 14)
+        lay.setSpacing(10)
+
+        self.lab_title = QLabel(os.path.basename(folder.rstrip("\\/")) or "录音")
+        self.lab_title.setStyleSheet("font-size:14px;font-weight:600;")
+        lay.addWidget(self.lab_title)
+
+        row = QHBoxLayout()
+        self.btn_play = QPushButton("▶ 播放")
+        self.btn_play.setFixedWidth(88)
+        self.btn_back = QPushButton("−10s")
+        self.btn_fwd = QPushButton("+10s")
+        row.addWidget(self.btn_play)
+        row.addWidget(self.btn_back)
+        row.addWidget(self.btn_fwd)
+        lay.addLayout(row)
+
+        self.slider = QSlider(Qt.Horizontal)
+        lay.addWidget(self.slider)
+
+        self.lab_time = QLabel("00:00 / 00:00")
+        self.lab_time.setStyleSheet("color:#6B7280;font-size:12px;")
+        lay.addWidget(self.lab_time)
+
+        self.btn_play.clicked.connect(self._toggle)
+        self.btn_back.clicked.connect(lambda: self._seek(self._pos - 10))
+        self.btn_fwd.clicked.connect(lambda: self._seek(self._pos + 10))
+        self.slider.sliderMoved.connect(lambda v: self._seek(v / 1000.0))
+
+        QTimer(self, timeout=self._tick).start(250)
+        threading.Thread(target=self._load, daemon=True).start()
+
+    def _audio_path(self):
+        for name in ("audio.opus", "audio.wav"):
+            p = os.path.join(self._folder, name)
+            if os.path.exists(p):
+                return p
+        return None
+
+    def _load(self):
+        path = self._audio_path()
+        if not path:
+            self.lab_time.setText("这次没有录音文件")
+            return
+        try:
+            import av
+            import numpy as np
+
+            c = av.open(path)
+            st = c.streams.audio[0]
+            res = av.audio.resampler.AudioResampler(format="s16", layout="mono", rate=SR)
+            parts = []
+            for f in c.decode(st):
+                for g in res.resample(f):
+                    parts.append(g.to_ndarray().reshape(-1))
+            c.close()
+            data = np.concatenate(parts).astype(np.int16) if parts else np.zeros(1, np.int16)
+            self._data = data
+            dur = len(data) / SR
+            self.slider.setRange(0, max(1, int(dur * 1000)))
+            self.lab_time.setText("00:00 / " + _fmt_time(dur))
+            self.lab_title.setText(f"{os.path.basename(self._folder.rstrip(chr(92)+chr(47)))}　{dur/60:.1f} 分钟")
+        except Exception as exc:
+            _log(f"回放加载失败 {exc.__class__.__name__}: {exc}")
+            self.lab_time.setText(f"加载失败：{exc.__class__.__name__}")
+
+    def _toggle(self):
+        if self._data is None:
+            return
+        if self._playing:
+            self._playing = False
+            self.btn_play.setText("▶ 播放")
+            if self._stream is not None:
+                try:
+                    self._stream.stop()
+                    self._stream.close()
+                except Exception:
+                    pass
+                self._stream = None
+            return
+        self._playing = True
+        self.btn_play.setText("⏸ 暂停")
+        try:
+            import sounddevice as sd
+
+            self._stream = sd.OutputStream(samplerate=SR, channels=1, dtype="int16",
+                                           callback=self._cb, blocksize=int(SR * 0.1))
+            self._stream.start()
+        except Exception as exc:
+            _log(f"回放启动失败 {exc.__class__.__name__}")
+            self._playing = False
+            self.btn_play.setText("▶ 播放")
+
+    def _cb(self, outdata, frames, t, status):
+        if not self._playing or self._data is None:
+            outdata.fill(0)
+            return
+        end = min(len(self._data), self._pos + frames)
+        chunk = self._data[self._pos:end]
+        outdata[:len(chunk), 0] = chunk
+        if len(chunk) < frames:
+            outdata[len(chunk):, 0] = 0
+            self._playing = False
+        self._pos = end
+
+    def _seek(self, sec):
+        if self._data is None:
+            return
+        self._pos = max(0, min(len(self._data) - 1, int(sec * SR)))
+
+    def _tick(self):
+        if self._data is None:
+            return
+        cur = self._pos / SR
+        self.slider.setValue(int(cur * 1000))
+        total = len(self._data) / SR
+        self.lab_time.setText(_fmt_time(cur) + " / " + _fmt_time(total))
+
+    def closeEvent(self, e):
+        self._playing = False
+        try:
+            if self._stream is not None:
+                self._stream.stop()
+                self._stream.close()
+        except Exception:
+            pass
+        super().closeEvent(e)
+
+
 class SummaryDialog(QDialog):
     def __init__(self, parent, title: str, body: str, folder: str,
                  transcript: str = "", key: str = ""):
@@ -2331,9 +2481,12 @@ class SummaryDialog(QDialog):
             sec = int(str(url.toString()).split(":")[1])
         except Exception:
             return
-        self._stop_audio()
-        self._playing = True
-        threading.Thread(target=self._play_from, args=(sec,), daemon=True).start()
+        try:
+            dlg = PlayerDialog(self, self._folder)
+            dlg.show()
+            QTimer.singleShot(1600, lambda: (dlg._seek(sec), dlg._toggle()))
+        except Exception as exc:
+            _log(f"打开回放器失败 {exc.__class__.__name__}")
 
     def _stop_audio(self):
         self._playing = False
@@ -3023,6 +3176,7 @@ def main() -> int:
     act_folder = menu.addAction("打开记录文件夹")
     act_import = menu.addAction("导入外部记录（AudioScript 等导出的 md）…")
     act_through = menu.addAction("鼠标穿透（锁定后只能用托盘解除）")
+    act_player = menu.addAction("录音回放…")
     act_through.setCheckable(True)
     menu.addSeparator()
     act_quit = menu.addAction("退出")
@@ -3070,6 +3224,22 @@ def main() -> int:
 
     act_import.triggered.connect(_import_record)
     act_through.toggled.connect(win.set_clickthrough)
+
+    def _open_player():
+        d = holder.get("dir")
+        if not d or not os.path.isdir(d):
+            import glob
+
+            dirs = sorted(glob.glob(os.path.join(ROOT, "recordings", "*")),
+                          key=os.path.getmtime, reverse=True)
+            dirs = [x for x in dirs if os.path.isdir(x)]
+            if not dirs:
+                win.set_status("还没有任何录音", "#fbbf24")
+                return
+            d = dirs[0]
+        PlayerDialog(win, d).show()
+
+    act_player.triggered.connect(_open_player)
     act_quit.triggered.connect(app.quit)
     tray.activated.connect(
         lambda reason: win.setVisible(not win.isVisible())
