@@ -2354,10 +2354,13 @@ class SummaryDialog(QDialog):
                     src = p
                     break
             if src is None:
+                _log("回放失败：这次没有录音文件")
                 return
             container = av.open(src)
             stream = container.streams.audio[0]
-            container.seek(max(0, int(sec) - 1) * av.time_base, stream=stream)
+            # seek 的时间戳要按流的 time_base 换算，用 av.time_base 会跳到文件末尾
+            _tb = float(stream.time_base or 0.000001)
+            container.seek(int(max(0, int(sec) - 1) / _tb), stream=stream)
             res = av.audio.resampler.AudioResampler(format="s16", layout="mono", rate=SR)
             want = SR * 14
             got = []
