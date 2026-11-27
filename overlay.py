@@ -1118,6 +1118,34 @@ def summary_md(obj: dict) -> str:
     return "\n".join(out)
 
 
+GLOBAL_QSS = """
+* { font-family: "Microsoft YaHei UI", "Segoe UI", "PingFang SC", sans-serif; }
+QDialog, QWidget { color: #111827; }
+QToolTip { background: #111827; color: #FFFFFF; border: none;
+           border-radius: 6px; padding: 6px 8px; font-size: 12px; }
+QScrollBar:vertical { background: transparent; width: 10px; margin: 4px 2px; }
+QScrollBar::handle:vertical { background: #D1D5DB; border-radius: 4px; min-height: 32px; }
+QScrollBar::handle:vertical:hover { background: #9CA3AF; }
+QScrollBar::add-line, QScrollBar::sub-line { height: 0; }
+QScrollBar:horizontal { height: 10px; background: transparent; }
+QScrollBar::handle:horizontal { background: #D1D5DB; border-radius: 4px; }
+QTextBrowser { border: none; background: transparent; font-size: 14px;
+               selection-background-color: #DBEAFE; }
+QTabWidget::pane { border: 1px solid #E5E7EB; border-radius: 12px; top: -1px; }
+QTabBar::tab { background: transparent; padding: 8px 20px; color: #6B7280;
+               font-size: 13px; border: none; }
+QTabBar::tab:selected { color: #111827; font-weight: 600;
+                        border-bottom: 2px solid #2563EB; }
+QPushButton { border: 1px solid #D1D5DB; border-radius: 8px; padding: 6px 16px;
+              background: #FFFFFF; font-size: 13px; min-height: 20px; }
+QPushButton:hover { background: #F9FAFB; border-color: #9CA3AF; }
+QPushButton:pressed { background: #F3F4F6; }
+QComboBox, QLineEdit { border: 1px solid #D1D5DB; border-radius: 8px;
+                       padding: 6px 10px; background: #FFFFFF; font-size: 13px; }
+QComboBox:focus, QLineEdit:focus { border-color: #2563EB; }
+"""
+
+
 def _fmt_time(sec) -> str:
     sec = max(0, int(sec))
     return "%02d:%02d" % (sec // 60, sec % 60)
@@ -2638,6 +2666,12 @@ class SummaryDialog(QDialog):
         self._playing = False
         self._busy = False
         self._answers: queue.Queue = queue.Queue()
+        self.setStyleSheet("""
+            QDialog { background: #FFFFFF; }
+            QTabWidget::pane { border: 1px solid #E5E7EB; border-radius: 12px;
+                               background: #FFFFFF; top: -1px; }
+            QTextBrowser { background: #FFFFFF; padding: 4px 2px; }
+        """)
         self.setWindowTitle("本次总结")
         self.setWindowFlag(Qt.Tool, True)   # 不占任务栏，避免出现 pythonw 图标
         self.setMinimumSize(620, 620)
@@ -2955,6 +2989,8 @@ def main() -> int:
     app = QApplication(sys.argv)
     # 主面板是 Qt.Tool，关掉设置/总结对话框时不能被当成"最后一个窗口"而退出
     app.setQuitOnLastWindowClosed(False)
+    app.setStyleSheet(GLOBAL_QSS)
+
     win = Overlay()
     win.show()
     _cfg0 = _load_config()
