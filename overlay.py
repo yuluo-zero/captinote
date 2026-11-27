@@ -507,6 +507,8 @@ def _resolve_model(name: str) -> str:
     return name
 
 
+BRIDGE = None
+
 _GLOSS_STOP = {
     "the", "and", "for", "with", "ai", "lab", "week", "two", "six",
     "one", "yes", "ok", "okay", "you", "are", "this", "that", "from",
@@ -2312,10 +2314,11 @@ class HistoryDialog(QDialog):
 
         row = QHBoxLayout()
         self.btn_sum = QPushButton("查看纪要")
+        self.btn_regen = QPushButton("重新生成纪要")
         self.btn_play = QPushButton("录音回放")
         self.btn_dir = QPushButton("打开文件夹")
         self.btn_close = QPushButton("关闭")
-        for b in (self.btn_sum, self.btn_play, self.btn_dir, self.btn_close):
+        for b in (self.btn_sum, self.btn_regen, self.btn_play, self.btn_dir, self.btn_close):
             b.setMinimumHeight(32)
             b.setStyleSheet("""
                 QPushButton { background:#FFFFFF; border:1px solid #D1D5DB;
@@ -2335,7 +2338,14 @@ class HistoryDialog(QDialog):
         self.btn_dir.clicked.connect(self._open_dir)
         self.btn_play.clicked.connect(self._play)
         self.btn_sum.clicked.connect(self._summary)
+        self.btn_regen.clicked.connect(self._regen)
         self.lst.itemDoubleClicked.connect(lambda _i: self._summary())
+
+        try:
+            if BRIDGE is not None:
+                BRIDGE.summary_done.connect(self._on_regen_done)
+        except Exception:
+            pass
 
         self._load()
 
@@ -2400,6 +2410,58 @@ class HistoryDialog(QDialog):
         if d:
             PlayerDialog(self, d).show()
 
+    def _on_regen_done(self, msg: str):
+        self.btn_regen.setEnabled(True)
+        self.btn_regen.setText("重新生成纪要")
+        if msg.startswith("REGEN|"):
+            QMessageBox.information(self, "完成", "纪要已重新生成，可以点「查看纪要」。")
+            self._refresh()
+        elif msg.startswith("REGENERR|"):
+            QMessageBox.warning(self, "失败",
+                                "生成失败：" + msg.split("|", 1)[1] + "\n检查网络后再试。")
+
+    def _refresh(self):
+        self.lst.clear()
+        self._rows.clear()
+        self._load()
+
+    def _regen(self):
+        d = self._cur()
+        if not d:
+            return
+        tx_path = os.path.join(d, "transcript.md")
+        if not os.path.exists(tx_path):
+            QMessageBox.information(self, "没有原文", "这次没有转录文本，无法生成。")
+            return
+        with open(tx_path, encoding="utf-8-sig") as f:
+            tx = f.read()
+        if len(tx.strip()) < 40:
+            QMessageBox.information(
+                self, "内容太少",
+                "这次的转录几乎是空的（可能没识别到声音），\n"
+                "先去检查麦克风或音频来源，重新录一次。")
+            return
+        key = _load_config().get("api_key", "").strip()
+        if not key:
+            QMessageBox.information(self, "缺少 API Key",
+                                    "设置里填一个 DeepSeek key 才能生成纪要。")
+            return
+        self.btn_regen.setEnabled(False)
+        self.btn_regen.setText("生成中…")
+
+        def work():
+            try:
+                obj = llm_summary(tx, key, _load_config().get("target_lang", "zh"))
+                md = summary_md(obj)
+                with open(os.path.join(d, "summary.md"), "w", encoding="utf-8") as f:
+                    f.write(md)
+                _log(f"重新生成纪要完成 {os.path.basename(d)}")
+                BRIDGE.summary_done.emit("REGEN|" + d)
+            except Exception as exc:
+                BRIDGE.summary_done.emit("REGENERR|" + exc.__class__.__name__)
+
+        threading.Thread(target=work, daemon=True).start()
+
     def _summary(self):
         d = self._cur()
         if not d:
@@ -2415,6 +2477,8 @@ class HistoryDialog(QDialog):
         if os.path.exists(tx_path):
             with open(tx_path, encoding="utf-8-sig") as f:
                 tx = f.read()
+            if len(tx) > 120000:
+                tx = tx[:120000] + "\n\n……（原文过长，仅显示前 12 万字）"
         SummaryDialog(self, os.path.basename(d), md, d, tx).show()
 
 
@@ -2942,6 +3006,8 @@ def main() -> int:
         return app.exec()
 
     bridge = Bridge()
+    global BRIDGE
+    BRIDGE = bridge
     _cfg1 = _load_config()
     rec = Recognizer(_resolve_model(args.model), args.threads, args.prompt,
                      language=_cfg1.get("language", "en"),
@@ -3319,6 +3385,8 @@ def main() -> int:
             _start_rec()
 
     def _on_summary(msg: str):
+        if msg.startswith("REGEN"):
+            return
         tag, body = msg.split("|", 1)
         if tag != "OK":
             win.set_status(f"总结失败：{body}", "#f87171")
