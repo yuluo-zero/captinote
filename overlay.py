@@ -1642,7 +1642,7 @@ class Overlay(QWidget):
         s = self.scale * self.font_scale
         c = self._palette()
         if depth <= 0:
-            zs, es, zp, ep = 19.0, 11.0, 1.0, 1.0
+            zs, es, zp, ep = 19.0, 12.5, 1.0, 1.0
         elif depth == 1:
             zs, es, zp, ep = 15.0, 10.0, 0.62, 0.55
         else:
@@ -1673,14 +1673,22 @@ class Overlay(QWidget):
             self.draft.setVisible(False)
             self.draft.setFixedHeight(0)
             return
+        # 有中文时不再显示英文草稿，避免挤掉中文
+        if zh:
+            en = ""
+        lim_en = 110
+        if len(en) > lim_en:
+            en = "…" + en[-lim_en:]
+        if len(zh) > 40:
+            zh = "…" + zh[-40:]
         parts = []
         if en:
             parts.append(f'<span style="font-size:12px;color:#9AA3B2">⋯ {html.escape(en)}</span>')
         if zh:
-            parts.append(f'<span style="font-size:15px;color:#9AA3B2">⋯ {html.escape(zh)}</span>')
+            parts.append(f'<span style="font-size:15px;color:#7C8598">⋯ {html.escape(zh)}</span>')
         self.draft.setText("<br>".join(parts))
         self.draft.setTextFormat(Qt.RichText)
-        self.draft.setFixedHeight(58 if zh else 36)   # 固定高，绝不撑大压住正文
+        self.draft.setFixedHeight(56 if zh else 40)   # 固定高，绝不撑大压住正文
         self.draft.setVisible(True)
 
     def show_text(self, orig: str, trans: str):
@@ -2799,6 +2807,10 @@ def main() -> int:
             _log(f"课后重译失败 {exc.__class__.__name__}: {exc}")
 
     def _finish_text(text: str, key: str) -> None:
+        if len((text or "").strip()) < 40:
+            _log(f"转录太短({len((text or '').strip())} 字符)，跳过总结")
+            win.set_status("这次没识别到内容：检查麦克风/音频来源后重试", "#f87171")
+            return
         win.set_status("正在生成总结…", "#94a3b8")
         threading.Thread(target=_retranslate_all,
                          args=(text, key, holder.get("dir")), daemon=True).start()
