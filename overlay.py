@@ -33,7 +33,7 @@ import sounddevice as sd
 from faster_whisper import WhisperModel
 from faster_whisper.audio import decode_audio
 
-from PySide6.QtCore import QEvent, QObject, QPoint, QRect, QRectF, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QObject, QPoint, QRect, QRectF, Qt, QTimer, Signal, QSize
 from PySide6.QtGui import QColor, QCursor, QIcon, QLinearGradient, QPainter
 from PySide6.QtWidgets import (
     QApplication,
@@ -54,6 +54,7 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QSlider,
     QListWidget,
+    QListWidgetItem,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -2271,11 +2272,27 @@ class HistoryDialog(QDialog):
         self._rows = []
 
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(16, 14, 16, 14)
-        lay.setSpacing(10)
+        lay.setContentsMargins(18, 16, 18, 16)
+        lay.setSpacing(12)
+
+        self.lab_head = QLabel("课堂记录")
+        self.lab_head.setStyleSheet("font-size:15px;font-weight:600;color:#111827;")
+        lay.addWidget(self.lab_head)
 
         self.lst = QListWidget()
+        self.lst.setStyleSheet("""
+            QListWidget { border:1px solid #E5E7EB; border-radius:10px;
+                          background:#FFFFFF; padding:6px; }
+            QListWidget::item { border-radius:8px; margin:3px 2px; }
+            QListWidget::item:selected { background:#EFF6FF; }
+            QListWidget::item:hover { background:#F9FAFB; }
+        """)
         lay.addWidget(self.lst, 1)
+
+        self.lab_empty = QLabel("还没有记录。点「开始」录一节课，这里就会出现。")
+        self.lab_empty.setAlignment(Qt.AlignCenter)
+        self.lab_empty.setStyleSheet("color:#9CA3AF;font-size:13px;")
+        lay.addWidget(self.lab_empty)
 
         row = QHBoxLayout()
         self.btn_sum = QPushButton("查看纪要")
@@ -2283,7 +2300,19 @@ class HistoryDialog(QDialog):
         self.btn_dir = QPushButton("打开文件夹")
         self.btn_close = QPushButton("关闭")
         for b in (self.btn_sum, self.btn_play, self.btn_dir, self.btn_close):
+            b.setMinimumHeight(32)
+            b.setStyleSheet("""
+                QPushButton { background:#FFFFFF; border:1px solid #D1D5DB;
+                              border-radius:8px; padding:6px 14px; font-size:13px; }
+                QPushButton:hover { background:#F3F4F6; }
+                QPushButton:pressed { background:#E5E7EB; }
+            """)
             row.addWidget(b)
+        self.btn_play.setStyleSheet("""
+            QPushButton { background:#2563EB; color:#FFFFFF; border:none;
+                          border-radius:8px; padding:6px 16px; font-size:13px; }
+            QPushButton:hover { background:#1D4ED8; }
+        """)
         lay.addLayout(row)
 
         self.btn_close.clicked.connect(self.close)
@@ -2317,9 +2346,27 @@ class HistoryDialog(QDialog):
                     except Exception:
                         pass
                     break
-            has_sum = "✓" if os.path.exists(os.path.join(d, "summary.md")) else " "
-            self.lst.addItem(f"{has_sum}  {when}   {name}")
+            has_sum = os.path.exists(os.path.join(d, "summary.md"))
+            item = QListWidgetItem()
+            item.setSizeHint(QSize(0, 62))
+            self.lst.addItem(item)
+            w = QWidget()
+            vl = QVBoxLayout(w)
+            vl.setContentsMargins(12, 8, 12, 8)
+            vl.setSpacing(2)
+            t = QLabel(name)
+            t.setStyleSheet("font-size:14px;font-weight:600;color:#111827;")
+            sub_txt = when + ("　·　已生成纪要" if has_sum else "　·　没有纪要")
+            sub = QLabel(sub_txt)
+            sub.setStyleSheet("font-size:12px;color:" + ("#059669" if has_sum else "#9CA3AF") + ";")
+            vl.addWidget(t)
+            vl.addWidget(sub)
+            self.lst.setItemWidget(item, w)
             self._rows.append(d)
+        if not self._rows:
+            self.lab_empty.show()
+        else:
+            self.lab_empty.hide()
 
     def _cur(self):
         i = self.lst.currentRow()
