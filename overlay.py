@@ -1771,6 +1771,22 @@ class SettingsDialog(QDialog):
 
     def __init__(self, parent, cfg: dict):
         super().__init__(parent)
+        self.setStyleSheet("""
+            QDialog { background: #FFFFFF; }
+            QTabWidget::pane { border: 1px solid #E5E7EB; border-radius: 10px;
+                               top: -1px; background: #FFFFFF; }
+            QTabBar::tab { background: transparent; padding: 8px 18px;
+                           color: #6B7280; font-size: 13px; }
+            QTabBar::tab:selected { color: #111827; font-weight: 600;
+                                    border-bottom: 2px solid #2563EB; }
+            QComboBox, QLineEdit { border: 1px solid #D1D5DB; border-radius: 8px;
+                                   padding: 6px 10px; background: #FFFFFF;
+                                   font-size: 13px; min-height: 20px; }
+            QComboBox:focus, QLineEdit:focus { border-color: #2563EB; }
+            QComboBox::drop-down { border: none; width: 22px; }
+            QLabel { color: #374151; font-size: 13px; }
+            QCheckBox { color: #374151; font-size: 13px; }
+        """)
         self.setWindowTitle("课堂同传 · 设置")
         self.setWindowFlag(Qt.Tool, True)
         self.setMinimumSize(520, 300)
