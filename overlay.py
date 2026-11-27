@@ -954,6 +954,45 @@ class Session:
                 pass
 
 
+def llm_translate_batch(lines: list[str], key: str, glossary: str = "") -> list[str]:
+    """一次翻一批句子，返回等长中文列表；失败抛异常。"""
+    import urllib.request
+
+    payload = json.dumps(lines, ensure_ascii=False)
+    sys_p = (
+        "你是课堂同传译者。输入是英文句子数组，按顺序译成简体中文，"
+        "输出同长度的 JSON 数组，只输出数组。上下文是同一节课的连续讲授，"
+        "注意术语一致、指代明确。\n"
+    )
+    if glossary:
+        sys_p += "本课术语（优先采用）：\n" + glossary[:1200] + "\n"
+    body = {
+        "model": "deepseek-chat",
+        "messages": [
+            {"role": "system", "content": sys_p},
+            {"role": "user", "content": payload},
+        ],
+        "temperature": 0.2,
+        "max_tokens": 2600,
+    }
+    req = urllib.request.Request(
+        "https://api.deepseek.com/chat/completions",
+        data=json.dumps(body).encode("utf-8"),
+        headers={"Content-Type": "application/json",
+                 "Authorization": f"Bearer {key}"},
+    )
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+    txt = data["choices"][0]["message"]["content"].strip()
+    if txt.startswith("```"):
+        txt = txt.strip("`")
+        txt = txt[txt.find("["):]
+    arr = json.loads(txt)
+    if not isinstance(arr, list) or len(arr) != len(lines):
+        raise ValueError("数量对不上")
+    return [str(x) for x in arr]
+
+
 def llm_summary(text: str, key: str, target: str = "zh") -> dict:
     lang = "中文" if target == "zh" else "English"
     body = json.dumps(
@@ -2736,8 +2775,33 @@ def main() -> int:
             return
         _finish_text(text, key)
 
+    def _retranslate_all(text: str, key: str, folder: str) -> None:
+        """下课后按全文语境把逐句译文重译一遍，写 transcript_zh.md。"""
+        try:
+            lines = [l.strip() for l in text.splitlines() if l.strip()]
+            lines = [l for l in lines if not l.startswith("#")]
+            if len(lines) < 3:
+                return
+            gl = _active_glossary(_load_config())
+            out = []
+            for i in range(0, len(lines), 20):
+                batch = lines[i:i + 20]
+                zh = llm_translate_batch(batch, key, gl)
+                out.extend(zip(batch, zh))
+                _log(f"重译进度 {len(out)}/{len(lines)}")
+            target = os.path.join(folder or os.path.join(ROOT, "recordings"), "transcript_zh.md")
+            with open(target, "w", encoding="utf-8") as f:
+                f.write("# 课后重译（按全文语境）\n\n")
+                for en, zh in out:
+                    f.write(f"- {en}\n  {zh}\n")
+            _log(f"课后重译完成 {len(out)} 行 → {os.path.basename(target)}")
+        except Exception as exc:
+            _log(f"课后重译失败 {exc.__class__.__name__}: {exc}")
+
     def _finish_text(text: str, key: str) -> None:
         win.set_status("正在生成总结…", "#94a3b8")
+        threading.Thread(target=_retranslate_all,
+                         args=(text, key, holder.get("dir")), daemon=True).start()
 
         def work():
             try:
