@@ -1716,14 +1716,12 @@ class Overlay(QWidget):
             self.draft.setVisible(False)
             self.draft.setFixedHeight(0)
             return
-        # 有中文时不再显示英文草稿，避免挤掉中文
-        if zh:
-            en = ""
-        lim_en = 110
+        # 英文一行、中文两行，都只留末尾，避免互相挤掉
+        lim_en = 58 if zh else 110
         if len(en) > lim_en:
             en = "…" + en[-lim_en:]
-        if len(zh) > 40:
-            zh = "…" + zh[-40:]
+        if len(zh) > 44:
+            zh = "…" + zh[-44:]
         parts = []
         if en:
             parts.append(f'<span style="font-size:12px;color:#9AA3B2">⋯ {html.escape(en)}</span>')
@@ -1731,7 +1729,7 @@ class Overlay(QWidget):
             parts.append(f'<span style="font-size:15px;color:#7C8598">⋯ {html.escape(zh)}</span>')
         self.draft.setText("<br>".join(parts))
         self.draft.setTextFormat(Qt.RichText)
-        self.draft.setFixedHeight(56 if zh else 40)   # 固定高，绝不撑大压住正文
+        self.draft.setFixedHeight(78 if zh else 40)   # 固定高，绝不撑大压住正文
         self.draft.setVisible(True)
 
     def show_text(self, orig: str, trans: str):
