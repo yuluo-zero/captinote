@@ -3408,8 +3408,9 @@ def main() -> int:
         win.set_status("正在生成总结…", "#94a3b8")
         threading.Thread(target=_retranslate_all,
                          args=(text, key, holder.get("dir")), daemon=True).start()
-        threading.Thread(target=_recheck_asr,
-                         args=(holder.get("dir"),), daemon=True).start()
+        if _load_config().get("recheck_asr", False):
+            threading.Thread(target=_recheck_asr,
+                             args=(holder.get("dir"),), daemon=True).start()
 
         def work():
             try:
