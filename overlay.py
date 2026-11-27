@@ -1143,10 +1143,10 @@ QDialog QPushButton { border: 1px solid #D1D5DB; border-radius: 8px;
                       min-height: 20px; }
 QDialog QPushButton:hover { background: #F9FAFB; border-color: #9CA3AF; }
 QDialog QPushButton:pressed { background: #F3F4F6; }
-QDialog QComboBox, QDialog QLineEdit { border: 1px solid #D1D5DB; border-radius: 8px;
-                                       padding: 6px 10px; background: #FFFFFF;
-                                       font-size: 13px; }
-QDialog QComboBox:focus, QDialog QLineEdit:focus { border-color: #2563EB; }
+QDialog QLineEdit { border: 1px solid #D1D5DB; border-radius: 8px;
+                     padding: 6px 10px; background: #FFFFFF;
+                     font-size: 13px; }
+QDialog QLineEdit:focus { border-color: #2563EB; }
 """
 
 
@@ -1824,8 +1824,9 @@ class SettingsDialog(QDialog):
         """)
         self.setWindowTitle("课堂同传 · 设置")
         self.setWindowFlag(Qt.Tool, True)
-        self.setMinimumSize(520, 300)
-        self.resize(560, 380)
+        self.setMinimumSize(460, 320)
+        self.setSizeGripEnabled(True)
+        self.resize(600, 560)
         self._cfg = dict(cfg)
 
         lay = QVBoxLayout(self)
