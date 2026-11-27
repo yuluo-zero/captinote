@@ -1119,31 +1119,36 @@ def summary_md(obj: dict) -> str:
 
 
 GLOBAL_QSS = """
-* { font-family: "Microsoft YaHei UI", "Segoe UI", "PingFang SC", sans-serif; }
-QDialog, QWidget { color: #111827; }
-QToolTip { background: #111827; color: #FFFFFF; border: none;
-           border-radius: 6px; padding: 6px 8px; font-size: 12px; }
-QScrollBar:vertical { background: transparent; width: 10px; margin: 4px 2px; }
-QScrollBar::handle:vertical { background: #D1D5DB; border-radius: 4px; min-height: 32px; }
-QScrollBar::handle:vertical:hover { background: #9CA3AF; }
-QScrollBar::add-line, QScrollBar::sub-line { height: 0; }
-QScrollBar:horizontal { height: 10px; background: transparent; }
-QScrollBar::handle:horizontal { background: #D1D5DB; border-radius: 4px; }
-QTextBrowser { border: none; background: transparent; font-size: 14px;
-               selection-background-color: #DBEAFE; }
-QTabWidget::pane { border: 1px solid #E5E7EB; border-radius: 12px; top: -1px; }
-QTabBar::tab { background: transparent; padding: 8px 20px; color: #6B7280;
-               font-size: 13px; border: none; }
-QTabBar::tab:selected { color: #111827; font-weight: 600;
-                        border-bottom: 2px solid #2563EB; }
-QPushButton { border: 1px solid #D1D5DB; border-radius: 8px; padding: 6px 16px;
-              background: #FFFFFF; font-size: 13px; min-height: 20px; }
-QPushButton:hover { background: #F9FAFB; border-color: #9CA3AF; }
-QPushButton:pressed { background: #F3F4F6; }
-QComboBox, QLineEdit { border: 1px solid #D1D5DB; border-radius: 8px;
-                       padding: 6px 10px; background: #FFFFFF; font-size: 13px; }
-QComboBox:focus, QLineEdit:focus { border-color: #2563EB; }
+QDialog { font-family: "Microsoft YaHei UI", "Segoe UI", "PingFang SC", sans-serif;
+          background: #FFFFFF; }
+QDialog QLabel, QDialog QCheckBox { color: #111827; font-size: 13px; }
+QDialog QToolTip { background: #111827; color: #FFFFFF; border: none;
+                   border-radius: 6px; padding: 6px 8px; font-size: 12px; }
+QDialog QScrollBar:vertical { background: transparent; width: 10px; margin: 4px 2px; }
+QDialog QScrollBar::handle:vertical { background: #D1D5DB; border-radius: 4px; min-height: 32px; }
+QDialog QScrollBar::handle:vertical:hover { background: #9CA3AF; }
+QDialog QScrollBar::add-line, QDialog QScrollBar::sub-line { height: 0; }
+QDialog QScrollBar:horizontal { height: 10px; background: transparent; }
+QDialog QScrollBar::handle:horizontal { background: #D1D5DB; border-radius: 4px; }
+QDialog QTextBrowser { border: none; background: #FFFFFF; font-size: 14px;
+                       selection-background-color: #DBEAFE; }
+QDialog QTabWidget::pane { border: 1px solid #E5E7EB; border-radius: 12px;
+                           top: -1px; background: #FFFFFF; }
+QDialog QTabBar::tab { background: transparent; padding: 8px 20px; color: #6B7280;
+                       font-size: 13px; border: none; }
+QDialog QTabBar::tab:selected { color: #111827; font-weight: 600;
+                                border-bottom: 2px solid #2563EB; }
+QDialog QPushButton { border: 1px solid #D1D5DB; border-radius: 8px;
+                      padding: 6px 16px; background: #FFFFFF; font-size: 13px;
+                      min-height: 20px; }
+QDialog QPushButton:hover { background: #F9FAFB; border-color: #9CA3AF; }
+QDialog QPushButton:pressed { background: #F3F4F6; }
+QDialog QComboBox, QDialog QLineEdit { border: 1px solid #D1D5DB; border-radius: 8px;
+                                       padding: 6px 10px; background: #FFFFFF;
+                                       font-size: 13px; }
+QDialog QComboBox:focus, QDialog QLineEdit:focus { border-color: #2563EB; }
 """
+
 
 
 def _fmt_time(sec) -> str:
